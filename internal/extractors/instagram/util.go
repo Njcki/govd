@@ -286,7 +286,7 @@ func GetCDNURL(contentURL string) (string, error) {
 }
 
 func GetGQLData(ctx *models.ExtractorContext) (*GraphQLData, error) {
-	graphHeaders, body, err := BuildGQLData()
+	graphHeaders, body, err := BuildGQLData(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build GQL data: %w", err)
 	}
@@ -348,7 +348,7 @@ func GetGQLData(ctx *models.ExtractorContext) (*GraphQLData, error) {
 	return response.Data, nil
 }
 
-func BuildGQLData() (map[string]string, map[string]string, error) {
+func BuildGQLData(ctx *models.ExtractorContext) (map[string]string, map[string]string, error) {
 	const (
 		domain                = "www"
 		requestID             = "b"
@@ -360,7 +360,6 @@ func BuildGQLData() (map[string]string, map[string]string, error) {
 		bloksVersionID        = "6309c8d03d8a3f47a1658ba38b304a3f837142ef5f637ebf1f8f52d4b802951e"
 		asbdID                = "129477"
 		hiddenState           = "20126.HYP:instagram_web_pkg.2.1...0"
-		loggedIn              = "0"
 		cometRequestID        = "7"
 		appVersion            = "0"
 		pixelRatio            = "2"
@@ -368,9 +367,6 @@ func BuildGQLData() (map[string]string, map[string]string, error) {
 	)
 	session := "::" + util.RandomAlphaString(6)
 	sessionData := util.RandomBase64(8)
-	csrfToken := util.RandomBase64(32)
-	deviceID := util.RandomBase64(24)
-	machineID := util.RandomBase64(24)
 	dynamicFlags := util.RandomBase64(154)
 	clientSessionRnd := util.RandomBase64(154)
 	jazoestBig, err := rand.Int(rand.Reader, big.NewInt(10000))
@@ -379,21 +375,46 @@ func BuildGQLData() (map[string]string, map[string]string, error) {
 	}
 	jazoest := strconv.FormatInt(jazoestBig.Int64()+1, 10)
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
-	cookies := []string{
-		"csrftoken=" + csrfToken,
-		"ig_did=" + deviceID,
-		"wd=1280x720",
-		"dpr=2",
-		"mid=" + machineID,
-		"ig_nrcb=1",
+
+	// Prefer real session cookies from private/cookies/instagram.txt (loaded on HTTPClient).
+	// Do NOT set a fake Cookie header — that overwrites authenticated session cookies.
+	cookies := util.GetExtractorCookies("instagram")
+	if len(cookies) == 0 && ctx != nil && ctx.HTTPClient != nil {
+		cookies = ctx.HTTPClient.Cookies
 	}
+
+	csrfToken := ""
+	userID := "0"
+	hasSession := false
+	for _, c := range cookies {
+		switch c.Name {
+		case "csrftoken":
+			if c.Value != "" {
+				csrfToken = c.Value
+			}
+		case "ds_user_id":
+			if c.Value != "" {
+				userID = c.Value
+			}
+		case "sessionid":
+			if c.Value != "" {
+				hasSession = true
+			}
+		}
+	}
+	if csrfToken == "" {
+		csrfToken = util.RandomBase64(32)
+	}
+	if hasSession && userID == "0" {
+		userID = "1"
+	}
+
 	headers := map[string]string{
 		"x-ig-app-id":        appID,
 		"X-FB-LSD":           sessionData,
 		"X-CSRFToken":        csrfToken,
 		"X-Bloks-Version-Id": bloksVersionID,
 		"x-asbd-id":          asbdID,
-		"cookie":             strings.Join(cookies, "; "),
 		"Content-Type":       "application/x-www-form-urlencoded",
 		"X-FB-Friendly-Name": polarisAction,
 	}
@@ -408,7 +429,7 @@ func BuildGQLData() (map[string]string, map[string]string, error) {
 		"__hsi":       sessionInternalID,
 		"__dyn":       dynamicFlags,
 		"__csr":       clientSessionRnd,
-		"__user":      loggedIn,
+		"__user":      userID,
 		"__comet_req": cometRequestID,
 		"libav":       appVersion,
 		"dpr":         pixelRatio,
