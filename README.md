@@ -37,12 +37,57 @@ everything you need to get started with the project can be found in the [wiki](h
 
 
 
-## Changes in this fork
+## changes in this fork
 
-* **Max video quality** in `/settings` (Best / 2160p / 1080p / 720p / 480p; default Best). Stored as `settings.max_video_height`. Cached downloads keep their previous quality until re-downloaded or the media cache is cleared.
-* **Captions** setting available in private chats as well as groups.
-* **Instagram**: use real session cookies from `private/cookies/instagram.txt` (gitignored), plus a **yt-dlp** fallback when GraphQL fails. `Dockerfile.instagram-fix` builds a CGO-free binary with yt-dlp on top of `govdbot/govd:main` (HEIF stubbed at build time when Alpine libheif packages diverge).
-* **Inline mode**: processing placeholder includes a localized Source button linking to the original URL (helps when Inline Feedback is off).
+this fork is based on [govdbot/govd](https://github.com/govdbot/govd). general setup still follows the [upstream wiki](https://github.com/govdbot/govd/wiki); the notes below cover only what this fork adds.
+
+### what's different
+
+* **max video quality** in `/settings` — Best / 2160p / 1080p / 720p / 480p (default Best = no cap). applies to every extractor that exposes multiple video formats. already-cached downloads keep their previous quality until you re-download or clear the media cache.
+* **captions** setting is available in private chats as well as groups.
+* **instagram** uses real session cookies from `private/cookies/` (never commit them) and falls back to **yt-dlp** when GraphQL fails.
+* **inline mode** shows a localized **source** button on the processing placeholder (useful when BotFather Inline Feedback is off and the placeholder never updates).
+
+### using the new settings
+
+1. start a chat with your bot (or open a group where it is admin).
+2. send `/settings`.
+3. open **max video quality** and pick Best / 2160p / 1080p / 720p / 480p.
+4. optional: enable **captions** in a private chat the same way (no longer groups-only).
+
+change the quality before sending a new link. if you already downloaded the same url, clear that media from the bot database/cache or expect the old file until it is fetched again.
+
+### cookies (instagram / x / tiktok / …)
+
+authenticated extractors read netscape-format cookie files under `private/cookies/` (for example `instagram.txt`, `twitter.txt`, `tiktok.txt`). those paths are gitignored — put cookies only on the host that runs the bot.
+
+* export cookies from a real logged-in browser session (browser extension or your usual workflow).
+* do **not** commit cookie files, `.env`, or `private/config.yaml`.
+* after updating cookies, restart the bot container so clients reload them.
+
+without valid instagram cookies, GraphQL often returns 401; this fork then tries yt-dlp with the same cookie file when present.
+
+### building this fork
+
+default image (includes yt-dlp, CGO-free build when libheif packages break):
+
+```bash
+docker build -t govd:fork .
+```
+
+alternative that layers a rebuilt binary + yt-dlp onto the official runtime image:
+
+```bash
+docker build -f Dockerfile.instagram-fix -t govd:fork .
+```
+
+then run with your usual `docker compose` / env from the [wiki](https://github.com/govdbot/govd/wiki) (`BOT_TOKEN`, database, optional self-hosted Bot API, etc.). point the compose `image` (or build context) at this fork instead of `govdbot/govd:main`.
+
+on first start, goose applies migration `00011_add_max_video_height_setting.sql` (`settings.max_video_height`, default `0`).
+
+### inline feedback
+
+for full inline downloads (placeholder replaced by media), enable **Inline Feedback** in [@BotFather](https://t.me/BotFather) for your bot. without it, users still get the source button on the processing message.
 
 ## migrating from v1
 
