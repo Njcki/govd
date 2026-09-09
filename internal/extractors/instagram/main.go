@@ -26,28 +26,35 @@ var Extractor = &models.Extractor{
 	Redirect:   false,
 
 	GetFunc: func(ctx *models.ExtractorContext) (*models.ExtractorResponse, error) {
-		// method 1: get media from GQL web API
+		// method 1: get media from GQL web API (uses real session cookies)
 		media, err1 := GetGQLMedia(ctx)
 		if err1 == nil {
 			return &models.ExtractorResponse{
 				Media: media,
 			}, nil
 		}
-		// method 2: get media from embed page
-		media, err2 := GetEmbedMedia(ctx)
+		// method 2: yt-dlp fallback (requires yt-dlp + private/cookies/instagram.txt)
+		media, err2 := GetYTDLPMedia(ctx)
 		if err2 == nil {
 			return &models.ExtractorResponse{
 				Media: media,
 			}, nil
 		}
-		// method 3: get media from 3rd party service (unlikely)
-		media, err3 := GetIGramPost(ctx)
+		// method 3: get media from embed page
+		media, err3 := GetEmbedMedia(ctx)
 		if err3 == nil {
 			return &models.ExtractorResponse{
 				Media: media,
 			}, nil
 		}
-		return nil, fmt.Errorf("all methods failed: %w; %w; %w", err1, err2, err3)
+		// method 4: get media from 3rd party service (unlikely)
+		media, err4 := GetIGramPost(ctx)
+		if err4 == nil {
+			return &models.ExtractorResponse{
+				Media: media,
+			}, nil
+		}
+		return nil, fmt.Errorf("all methods failed: %w; %w; %w; %w", err1, err2, err3, err4)
 	},
 }
 
