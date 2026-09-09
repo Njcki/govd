@@ -21,3 +21,8 @@ translate.*.toml
 
 # Agents
 CLAUDE.md
+
+# Never commit session cookies or local secrets (fork safety)
+private/cookies/
+private/config.yaml
+**/cookies/*.txt

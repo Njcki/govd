@@ -36,6 +36,14 @@
 everything you need to get started with the project can be found in the [wiki](https://github.com/govdbot/govd/wiki).
 
 
+
+## Changes in this fork
+
+* **Max video quality** in `/settings` (Best / 2160p / 1080p / 720p / 480p; default Best). Stored as `settings.max_video_height`. Cached downloads keep their previous quality until re-downloaded or the media cache is cleared.
+* **Captions** setting available in private chats as well as groups.
+* **Instagram**: use real session cookies from `private/cookies/instagram.txt` (gitignored), plus a **yt-dlp** fallback when GraphQL fails. `Dockerfile.instagram-fix` builds a CGO-free binary with yt-dlp on top of `govdbot/govd:main` (HEIF stubbed at build time when Alpine libheif packages diverge).
+* **Inline mode**: processing placeholder includes a localized Source button linking to the original URL (helps when Inline Feedback is off).
+
 ## migrating from v1
 
 if you are migrating from govd v1 to v2, refer to the [migration tool](https://github.com/govdbot/migrate).

@@ -1,2 +1,8 @@
-cookies/*.txt
+# Session cookies and local bot config — never commit
+cookies/
+cookies/**
+*.txt
 config.yaml
+.env
+*.pem
+id_*
