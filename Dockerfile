@@ -4,11 +4,7 @@ ENV GOCACHE=/root/.cache/go-build
 
 RUN --mount=type=cache,target=/var/cache/apk,sharing=locked \
     --mount=type=cache,target=/var/lib/apk,sharing=locked \
-    apk add --no-cache \
-        --repository="https://dl-cdn.alpinelinux.org/alpine/edge/main" \
-        --repository="https://dl-cdn.alpinelinux.org/alpine/edge/community" \
-        "build-base=0.5-r4" \
-        "libheif-dev=1.21.2-r2"
+    apk add --no-cache git
 
 WORKDIR /app
 
@@ -22,10 +18,13 @@ RUN --mount=type=cache,target=/go/pkg/mod \
 
 COPY . .
 
+# Build without libheif CGO (edge libheif no longer matches go bindings).
+RUN printf '%s\n' 'package util' > internal/util/heif.go
+
 RUN sqlc generate
 
 RUN --mount=type=cache,target="/root/.cache/go-build" \
-    CGO_ENABLED=1 go build \
+    CGO_ENABLED=0 go build \
         -ldflags="-s -w" \
         -o govd ./cmd/main.go
 
@@ -38,8 +37,10 @@ RUN --mount=type=cache,target=/var/cache/apk,sharing=locked \
     apk add --no-cache \
         --repository="https://dl-cdn.alpinelinux.org/alpine/edge/main" \
         --repository="https://dl-cdn.alpinelinux.org/alpine/edge/community" \
-        "ffmpeg=8.0.1-r3" \
-        "libheif=1.21.2-r2"
+        ffmpeg \
+        python3 \
+        py3-pip \
+    && pip3 install --break-system-packages --no-cache-dir yt-dlp
 
 COPY --from=builder /app/govd ./govd
 

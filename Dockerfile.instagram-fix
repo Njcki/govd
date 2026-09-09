@@ -1,0 +1,38 @@
+# Instagram fix: patched govd binary + yt-dlp, based on official runtime
+FROM golang:1.26-alpine AS builder
+
+ENV GOMAXPROCS=1
+WORKDIR /app
+
+RUN apk add --no-cache git
+
+RUN go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.30.0
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+
+# HEIF CGO bindings break against current edge libheif; Instagram reels are MP4.
+# Build without libheif so we can cross-use a CGO-free binary on the official image.
+RUN printf '%s\n' 'package util' > internal/util/heif.go
+
+RUN sqlc generate
+
+RUN CGO_ENABLED=0 go build \
+        -ldflags="-s -w" \
+        -o govd ./cmd/main.go
+
+FROM govdbot/govd:main
+
+USER root
+WORKDIR /app
+
+RUN apk add --no-cache python3 py3-pip \
+    && pip3 install --break-system-packages --no-cache-dir yt-dlp \
+    && yt-dlp --version \
+    && which yt-dlp
+
+COPY --from=builder /app/govd /app/govd
+
+ENTRYPOINT ["./govd"]
