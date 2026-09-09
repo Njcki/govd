@@ -86,6 +86,7 @@ func ChatFromContext(ctx *ext.Context) (*database.GetOrCreateChatRow, error) {
 			Nsfw:            config.Env.DefaultNSFW,
 			MediaAlbumLimit: config.Env.DefaultMediaAlbumLimit,
 			DeleteLinks:     config.Env.DefaultDeleteLinks,
+			MaxVideoHeight:  0,
 		},
 	)
 	if err != nil {

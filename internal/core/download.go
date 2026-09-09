@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/govdbot/govd/internal/database"
@@ -59,7 +60,11 @@ func downloadItem(
 	case 1:
 		format = item.Formats[0]
 	default:
-		format = item.GetDefaultFormat()
+		var maxHeight int32
+		if ctx.Chat != nil {
+			maxHeight = ctx.Chat.MaxVideoHeight
+		}
+		format = item.GetDefaultFormat(maxHeight)
 	}
 
 	if format == nil {
@@ -132,6 +137,25 @@ func downloadFormat(
 ) (*models.DownloadedFormat, error) {
 	if len(format.URL) == 0 {
 		return nil, fmt.Errorf("no URL found for selected format")
+	}
+
+	// local file produced by an extractor (e.g. yt-dlp fallback)
+	if strings.HasPrefix(format.URL[0], "file://") {
+		filePath := strings.TrimPrefix(format.URL[0], "file://")
+		ctx.FilesTracker.Add(filePath)
+		thumbnailFilePath, err := getThumbnail(ctx, format, filePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get thumbnail: %w", err)
+		}
+		if format.MissingMetadata() {
+			insertVideoInfo(format, filePath)
+		}
+		return &models.DownloadedFormat{
+			Format:            format,
+			Index:             index,
+			FilePath:          filePath,
+			ThumbnailFilePath: thumbnailFilePath,
+		}, nil
 	}
 
 	fileName := format.GetFileName()

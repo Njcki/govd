@@ -38,3 +38,8 @@ WHERE chat_id = @chat_id;
 UPDATE settings
 SET delete_links = NOT delete_links, updated_at = CURRENT_TIMESTAMP
 WHERE chat_id = @chat_id;
+
+-- name: SetChatMaxVideoHeight :exec
+UPDATE settings
+SET max_video_height = @max_video_height, updated_at = CURRENT_TIMESTAMP
+WHERE chat_id = @chat_id;

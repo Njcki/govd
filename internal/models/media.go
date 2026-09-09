@@ -179,8 +179,8 @@ func (mi *MediaItem) GetFormatByID(formatID string) *MediaFormat {
 	return nil
 }
 
-func (mi *MediaItem) GetDefaultFormat() *MediaFormat {
-	format := mi.GetDefaultVideoFormat()
+func (mi *MediaItem) GetDefaultFormat(maxHeight int32) *MediaFormat {
+	format := mi.GetDefaultVideoFormat(maxHeight)
 	if format != nil {
 		return format
 	}
@@ -195,7 +195,7 @@ func (mi *MediaItem) GetDefaultFormat() *MediaFormat {
 	return nil
 }
 
-func (mi *MediaItem) GetDefaultVideoFormat() *MediaFormat {
+func (mi *MediaItem) GetDefaultVideoFormat(maxHeight int32) *MediaFormat {
 	filtered := mi.FilterFormats(func(format *MediaFormat) bool {
 		return format.VideoCodec == database.MediaCodecAvc
 	})
@@ -207,6 +207,45 @@ func (mi *MediaItem) GetDefaultVideoFormat() *MediaFormat {
 	if len(filtered) == 0 {
 		return nil
 	}
+
+	if maxHeight > 0 {
+		capped := make([]*MediaFormat, 0, len(filtered))
+		for _, format := range filtered {
+			if format.Height > 0 && format.Height <= maxHeight {
+				capped = append(capped, format)
+			}
+		}
+		if len(capped) > 0 {
+			filtered = capped
+		} else {
+			// no format within the cap — fall back to the lowest-height video
+			lowest := make([]*MediaFormat, 0, len(filtered))
+			for _, format := range filtered {
+				if format.Height > 0 {
+					lowest = append(lowest, format)
+				}
+			}
+			if len(lowest) == 0 {
+				lowest = filtered
+			}
+			slices.SortFunc(lowest, func(a, b *MediaFormat) int {
+				if a.Height < b.Height {
+					return -1
+				} else if a.Height > b.Height {
+					return 1
+				}
+				if a.Bitrate != b.Bitrate {
+					if a.Bitrate > b.Bitrate {
+						return -1
+					}
+					return 1
+				}
+				return 0
+			})
+			return lowest[0]
+		}
+	}
+
 	slices.SortFunc(filtered, func(a, b *MediaFormat) int {
 		if a.Bitrate != b.Bitrate {
 			if a.Bitrate > b.Bitrate {

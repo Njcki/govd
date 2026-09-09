@@ -60,7 +60,7 @@ var botSettings = []BotSettings{
 		DescriptionKey: localization.CaptionsSettingsMessage.ID,
 
 		Type:  SettingsTypeToggle,
-		Scope: SettingsScopeGroup,
+		Scope: SettingsScopeAll,
 
 		ToggleFunc: func(ctx context.Context, chatID int64) error {
 			return database.Q().ToggleChatCaptions(ctx, chatID)
@@ -68,6 +68,53 @@ var botSettings = []BotSettings{
 		GetCurrentValueFunc: func(res *database.GetOrCreateChatRow) any {
 			return res.Captions
 		},
+	},
+	{
+		ID:             "max_video_quality",
+		ButtonKey:      localization.MaxVideoQualityButton.ID,
+		DescriptionKey: localization.MaxVideoQualitySettingsMessage.ID,
+
+		Type:  SettingsTypeSelect,
+		Scope: SettingsScopeAll,
+
+		OptionsFunc: func(_ *localization.Localizer) []*BotSettingsOptions {
+			options := []struct {
+				name  string
+				value int32
+			}{
+				{"Best", 0},
+				{"2160p", 2160},
+				{"1080p", 1080},
+				{"720p", 720},
+				{"480p", 480},
+			}
+			result := make([]*BotSettingsOptions, 0, len(options))
+			for _, opt := range options {
+				result = append(result, &BotSettingsOptions{
+					Name:  opt.name,
+					Value: opt.value,
+				})
+			}
+			return result
+		},
+		SetValueFunc: func(ctx context.Context, chatID int64, value any) error {
+			height, ok := value.(int32)
+			if !ok {
+				if f, ok := value.(float64); ok {
+					height = int32(f)
+				} else {
+					return nil
+				}
+			}
+			return database.Q().SetChatMaxVideoHeight(ctx, database.SetChatMaxVideoHeightParams{
+				MaxVideoHeight: height,
+				ChatID:         chatID,
+			})
+		},
+		GetCurrentValueFunc: func(res *database.GetOrCreateChatRow) any {
+			return res.MaxVideoHeight
+		},
+		OptionsChunk: 5,
 	},
 	{
 		ID:             "media_album",
