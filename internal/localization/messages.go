@@ -27,6 +27,10 @@ var (
 		ID:    "SettingsButton",
 		Other: "settings",
 	}
+	SourceButton = &i18n.Message{
+		ID:    "SourceButton",
+		Other: "source",
+	}
 	LanguageButton = &i18n.Message{
 		ID:    "LanguageButton",
 		Other: "language",
@@ -62,6 +66,14 @@ var (
 	MediaAlbumSettingsMessage = &i18n.Message{
 		ID:    "MediaAlbumSettingsMessage",
 		Other: "select maximum number of files allowed in a single media album",
+	}
+	MaxVideoQualityButton = &i18n.Message{
+		ID:    "MaxVideoQualityButton",
+		Other: "max video quality",
+	}
+	MaxVideoQualitySettingsMessage = &i18n.Message{
+		ID:    "MaxVideoQualitySettingsMessage",
+		Other: "select the maximum video resolution for downloads. Best uses the highest available quality with no cap",
 	}
 	InlineLoadingMessage = &i18n.Message{
 		ID:    "InlineLoadingMessage",

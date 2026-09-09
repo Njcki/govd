@@ -29,29 +29,43 @@ func HandleInlineTask(
 
 	localizer := localization.New(extractorCtx.Chat.Language)
 
+	processingText := localizer.T(&i18n.LocalizeConfig{
+		MessageID: localization.InlineProcessingMessage.ID,
+	})
+
+	keyboard := [][]gotgbot.InlineKeyboardButton{}
+	if sourceURL := extractorCtx.ContentURL; sourceURL != "" {
+		keyboard = append(keyboard, []gotgbot.InlineKeyboardButton{
+			{
+				Text: localizer.T(&i18n.LocalizeConfig{
+					MessageID: localization.SourceButton.ID,
+				}),
+				Url:  sourceURL,
+			},
+		})
+	} else {
+		keyboard = append(keyboard, []gotgbot.InlineKeyboardButton{
+			{
+				Text:         "...",
+				CallbackData: "inline:loading",
+			},
+		})
+	}
+
 	inlineResult := &gotgbot.InlineQueryResultArticle{
 		Id: taskID,
 		Title: localizer.T(&i18n.LocalizeConfig{
 			MessageID: localization.InlineShareMessage.ID,
 		}),
 		InputMessageContent: &gotgbot.InputTextMessageContent{
-			MessageText: localizer.T(&i18n.LocalizeConfig{
-				MessageID: localization.InlineProcessingMessage.ID,
-			}),
-			ParseMode: gotgbot.ParseModeHTML,
+			MessageText: processingText,
+			ParseMode:   gotgbot.ParseModeHTML,
 			LinkPreviewOptions: &gotgbot.LinkPreviewOptions{
 				IsDisabled: true,
 			},
 		},
 		ReplyMarkup: &gotgbot.InlineKeyboardMarkup{
-			InlineKeyboard: [][]gotgbot.InlineKeyboardButton{
-				{
-					{
-						Text:         "...",
-						CallbackData: "inline:loading",
-					},
-				},
-			},
+			InlineKeyboard: keyboard,
 		},
 	}
 	ok, err := ctx.InlineQuery.Answer(

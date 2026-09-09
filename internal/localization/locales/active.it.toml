@@ -138,6 +138,15 @@ other = "album multimediale"
 hash = "sha1-8228632c4b28e007be43131b6a6086f7af8cb675"
 other = "seleziona il numero massimo di file consentiti in un singolo album multimediale"
 
+
+[MaxVideoQualityButton]
+hash = "sha1-8e0c9e034a0b8a072b8d85c3a409741ba4377f9d"
+other = "qualità max"
+
+[MaxVideoQualitySettingsMessage]
+hash = "sha1-787bea054a05bb72545f37c457555a6e415c4c63"
+other = "seleziona la risoluzione video massima per i download. Best (migliore disponibile) non applica alcun limite"
+
 [NoPermission]
 hash = "sha1-8d32138f2eba21b8e6da3b1ff89cd24313c70733"
 other = "non hai i permessi per eseguire questa azione"
@@ -169,6 +178,11 @@ other = "modalità silenziosa"
 [SilentModeSettingsMessage]
 hash = "sha1-8eca1f33085a260053289e27e44da9ac425b3df6"
 other = "quando abilitato, il bot non invierà messaggi di errore"
+
+
+[SourceButton]
+hash = "sha1-828d338a9b04221c9cbe286f50cd389f68de4ecf"
+other = "sorgente"
 
 [StartMessage]
 hash = "sha1-40428a095863d4dc32706540458f80f76b1b1eef"
