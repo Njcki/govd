@@ -148,7 +148,7 @@ func notifyAdmins(b *gotgbot.Bot, text string) {
 	}
 	for _, adminID := range config.Env.Admins {
 		_, err := b.SendMessage(adminID, text, &gotgbot.SendMessageOpts{
-			ParseMode: gotgbot.ParseModeHTML,,
+			ParseMode: gotgbot.ParseModeHTML,
 			LinkPreviewOptions: &gotgbot.LinkPreviewOptions{
 				IsDisabled: true,
 			},
