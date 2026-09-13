@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
@@ -18,8 +17,8 @@ import (
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
-// HandleInlineAlbumOpen sends the full album on first open, or replies to the
-// previously saved album message on later opens.
+// HandleInlineAlbumOpen sends the full album on first open, or a short notice
+// with a resend button when a ref already exists.
 func HandleInlineAlbumOpen(
 	bot *gotgbot.Bot,
 	ctx *ext.Context,
@@ -31,32 +30,75 @@ func HandleInlineAlbumOpen(
 	}
 	localizer := localization.New(chat.Language)
 	userID := ctx.EffectiveUser.Id
+	chatID := ctx.EffectiveChat.Id
 
-	ref, err := database.Q().GetInlineAlbumRef(context.Background(), database.GetInlineAlbumRefParams{
+	_, err = database.Q().GetInlineAlbumRef(context.Background(), database.GetInlineAlbumRefParams{
 		UserID:      userID,
 		ExtractorID: extractorID,
 		ContentID:   contentID,
 	})
 	if err == nil {
-		already := localizer.T(&i18n.LocalizeConfig{
-			MessageID: localization.AlbumAlreadySentMessage.ID,
-		})
-		_, sendErr := bot.SendMessage(ctx.EffectiveChat.Id, already, &gotgbot.SendMessageOpts{
-			ReplyParameters: &gotgbot.ReplyParameters{
-				MessageId: ref.MessageID,
-			},
-		})
-		if sendErr == nil {
-			return nil
-		}
-		if !isReplyTargetMissing(sendErr) {
-			return sendErr
-		}
-		logger.L.Warnf("album ref message missing for user=%d %s/%s, re-sending", userID, extractorID, contentID)
-	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return sendAlreadySentNotice(bot, chatID, localizer, extractorID, contentID)
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
 		return err
 	}
 
+	return sendAndStoreInlineAlbum(bot, ctx, chat, localizer, userID, extractorID, contentID)
+}
+
+// HandleInlineAlbumResend always re-sends the full album and updates the ref.
+func HandleInlineAlbumResend(
+	bot *gotgbot.Bot,
+	ctx *ext.Context,
+	extractorID, contentID string,
+) error {
+	chat, err := util.ChatFromContext(ctx)
+	if err != nil {
+		return err
+	}
+	localizer := localization.New(chat.Language)
+	userID := ctx.EffectiveUser.Id
+	return sendAndStoreInlineAlbum(bot, ctx, chat, localizer, userID, extractorID, contentID)
+}
+
+func sendAlreadySentNotice(
+	bot *gotgbot.Bot,
+	chatID int64,
+	localizer *localization.Localizer,
+	extractorID, contentID string,
+) error {
+	text := localizer.T(&i18n.LocalizeConfig{
+		MessageID: localization.AlbumAlreadySentMessage.ID,
+	})
+	buttonText := localizer.T(&i18n.LocalizeConfig{
+		MessageID: localization.ResendAlbumButton.ID,
+	})
+	callbackData, err := BuildAlbumResendCallbackData(context.Background(), extractorID, contentID)
+	if err != nil {
+		return err
+	}
+	_, err = bot.SendMessage(chatID, text, &gotgbot.SendMessageOpts{
+		ReplyMarkup: gotgbot.InlineKeyboardMarkup{
+			InlineKeyboard: [][]gotgbot.InlineKeyboardButton{{
+				{
+					Text:         buttonText,
+					CallbackData: callbackData,
+				},
+			}},
+		},
+	})
+	return err
+}
+
+func sendAndStoreInlineAlbum(
+	bot *gotgbot.Bot,
+	ctx *ext.Context,
+	chat *database.GetOrCreateChatRow,
+	localizer *localization.Localizer,
+	userID int64,
+	extractorID, contentID string,
+) error {
 	extractor := extractors.ByID(extractorID)
 	if extractor == nil {
 		return fmt.Errorf("unknown extractor: %s", extractorID)
@@ -80,10 +122,16 @@ func HandleInlineAlbumOpen(
 
 	formats := make([]*models.DownloadedFormat, 0, len(media.Items))
 	for i, item := range media.Items {
+		if len(item.Formats) == 0 {
+			continue
+		}
 		formats = append(formats, &models.DownloadedFormat{
 			Format: item.Formats[0],
 			Index:  i,
 		})
+	}
+	if len(formats) == 0 {
+		return ErrNoMedia
 	}
 
 	caption := localizer.T(&i18n.LocalizeConfig{
@@ -100,16 +148,21 @@ func HandleInlineAlbumOpen(
 		FilesTracker: models.NewFilesTracker(),
 	}
 
-	messages, err := SendFormats(
-		bot, ctx, extractorCtx,
-		media, formats,
-		&models.SendFormatsOptions{
-			Caption:  caption,
-			IsStored: true,
-		},
-	)
+	// Send without replying to /start so the saved message_id is a clean album root.
+	messages, err := sendAlbumToChat(bot, ctx.EffectiveChat.Id, media, formats, caption)
 	if err != nil {
-		return err
+		// Fallback to the shared sender if direct send fails.
+		messages, err = SendFormats(
+			bot, ctx, extractorCtx,
+			media, formats,
+			&models.SendFormatsOptions{
+				Caption:  caption,
+				IsStored: true,
+			},
+		)
+		if err != nil {
+			return err
+		}
 	}
 
 	err = database.Q().UpsertInlineAlbumRef(context.Background(), database.UpsertInlineAlbumRefParams{
@@ -124,13 +177,49 @@ func HandleInlineAlbumOpen(
 	return nil
 }
 
-func isReplyTargetMissing(err error) bool {
-	var tgErr *gotgbot.TelegramError
-	if !errors.As(err, &tgErr) {
-		return false
+func sendAlbumToChat(
+	bot *gotgbot.Bot,
+	chatID int64,
+	media *models.Media,
+	formats []*models.DownloadedFormat,
+	caption string,
+) ([]gotgbot.Message, error) {
+	var sent []gotgbot.Message
+	chunks := chunkFormats(formats, 10)
+	for _, chunk := range chunks {
+		var input []gotgbot.InputMedia
+		for i, f := range chunk {
+			cap := ""
+			if i == 0 {
+				cap = caption
+			}
+			im, err := f.Format.GetInputMedia(f.FilePath, f.ThumbnailFilePath, cap, false)
+			if err != nil {
+				return nil, err
+			}
+			input = append(input, im)
+		}
+		util.SendMediaAction(bot, chatID, chunk[0].Format.Type)
+		msgs, err := bot.SendMediaGroup(chatID, input, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to send media group: %w", err)
+		}
+		sent = append(sent, msgs...)
 	}
-	desc := strings.ToLower(tgErr.Description)
-	return strings.Contains(desc, "message to reply not found") ||
-		strings.Contains(desc, "replied message not found") ||
-		strings.Contains(desc, "message not found")
+	return sent, nil
+}
+
+func chunkFormats(formats []*models.DownloadedFormat, size int) [][]*models.DownloadedFormat {
+	if size <= 0 {
+		size = 10
+	}
+	var out [][]*models.DownloadedFormat
+	for i := 0; i < len(formats); i += size {
+		j := i + size
+		if j > len(formats) {
+			j = len(formats)
+		}
+		out = append(out, formats[i:j])
+	}
+	return out
 }

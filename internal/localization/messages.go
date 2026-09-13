@@ -223,4 +223,8 @@ var (
 		ID:    "AlbumAlreadySentMessage",
 		Other: "Album già inviato.",
 	}
+	ResendAlbumButton = &i18n.Message{
+		ID:    "ResendAlbumButton",
+		Other: "Invia di nuovo",
+	}
 )

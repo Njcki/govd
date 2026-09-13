@@ -211,3 +211,7 @@ other = "Album già inviato."
 [InlineAlbumCaptionMessage]
 hash = "sha1-inline-album-caption-message-it"
 other = "Post con più media. Tocca Apri nel bot per gli altri."
+
+[ResendAlbumButton]
+hash = "sha1-resend-album-button-it"
+other = "Invia di nuovo"

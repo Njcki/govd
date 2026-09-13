@@ -126,6 +126,10 @@ func registerHandlers(dispatcher *ext.Dispatcher) *ext.Dispatcher {
 		callbackquery.Equal("start"),
 		botHandlers.StartHandler,
 	))
+	dispatcher.AddHandler(handlers.NewCallback(
+		callbackquery.Prefix("album:rs"),
+		botHandlers.AlbumResendHandler,
+	))
 
 	// extractors
 	dispatcher.AddHandler(handlers.NewCallback(

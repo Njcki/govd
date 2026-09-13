@@ -23,3 +23,9 @@ SET extractor_id = EXCLUDED.extractor_id,
 SELECT hash, extractor_id, content_id, created_at
 FROM inline_album_payload
 WHERE hash = @hash;
+
+-- name: DeleteInlineAlbumRef :exec
+DELETE FROM inline_album_ref
+WHERE user_id = @user_id
+  AND extractor_id = @extractor_id
+  AND content_id = @content_id;

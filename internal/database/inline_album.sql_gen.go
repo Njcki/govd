@@ -9,6 +9,24 @@ import (
 	"context"
 )
 
+const deleteInlineAlbumRef = `-- name: DeleteInlineAlbumRef :exec
+DELETE FROM inline_album_ref
+WHERE user_id = $1
+  AND extractor_id = $2
+  AND content_id = $3
+`
+
+type DeleteInlineAlbumRefParams struct {
+	UserID      int64
+	ExtractorID string
+	ContentID   string
+}
+
+func (q *Queries) DeleteInlineAlbumRef(ctx context.Context, arg DeleteInlineAlbumRefParams) error {
+	_, err := q.db.Exec(ctx, deleteInlineAlbumRef, arg.UserID, arg.ExtractorID, arg.ContentID)
+	return err
+}
+
 const getInlineAlbumPayload = `-- name: GetInlineAlbumPayload :one
 SELECT hash, extractor_id, content_id, created_at
 FROM inline_album_payload
