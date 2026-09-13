@@ -179,6 +179,10 @@ var (
 		ID:    "ErrorAuthenticationNeeded",
 		Other: "this instance is not authenticated with this service",
 	}
+	ErrorInstagramCookies = &i18n.Message{
+		ID:    "ErrorInstagramCookies",
+		Other: "instagram cookies are missing or expired (need a valid sessionid). re-export cookies from a logged-in browser and run the install script",
+	}
 	ErrorFileTooLarge = &i18n.Message{
 		ID:    "ErrorFileTooLarge",
 		Other: "this file is too large and exceeds the maximum allowed size for this instance",

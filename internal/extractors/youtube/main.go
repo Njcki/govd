@@ -24,33 +24,46 @@ var Extractor = &models.Extractor{
 	},
 
 	GetFunc: func(ctx *models.ExtractorContext) (*models.ExtractorResponse, error) {
-		video, err := GetVideoFromInv(ctx)
-		if err != nil {
-			return nil, err
+		video, errInv := GetVideoFromInv(ctx)
+		if errInv == nil && video != nil {
+			return &models.ExtractorResponse{Media: video}, nil
 		}
-		return &models.ExtractorResponse{
-			Media: video,
-		}, nil
+		if errInv != nil {
+			ctx.Debugf("invidious path failed: %v", errInv)
+		}
+		video, errYT := GetYTDLPMedia(ctx)
+		if errYT == nil {
+			return &models.ExtractorResponse{Media: video}, nil
+		}
+		if errInv != nil {
+			return nil, fmt.Errorf("youtube failed: invidious: %w; yt-dlp: %v", errInv, errYT)
+		}
+		return nil, errYT
 	},
 }
 
 func GetVideoFromInv(ctx *models.ExtractorContext) (*models.Media, error) {
-	if ctx.Config == nil {
+	if ctx.Config == nil || len(ctx.Config.Instance) == 0 {
 		return nil, fmt.Errorf("youtube not configured")
 	}
-	var err error
+	var lastErr error
 	for i := range ctx.Config.Instance {
 		instance, err := GetInvInstance(ctx, i)
 		if err != nil {
+			lastErr = err
 			continue
 		}
 		media, err := GetFromInstance(ctx, instance)
 		if err == nil {
 			return media, nil
 		}
+		lastErr = err
 		ctx.Debugf("invidious instance %s failed: %v", instance, err)
 	}
-	return nil, err
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no working invidious instance")
+	}
+	return nil, lastErr
 }
 
 func GetFromInstance(ctx *models.ExtractorContext, instance string) (*models.Media, error) {

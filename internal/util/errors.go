@@ -32,6 +32,7 @@ var (
 	ErrDurationTooLong               = &Error{ID: localization.ErrorDurationTooLong.ID}
 	ErrPaidContent                   = &Error{ID: localization.ErrorPaidContent.ID}
 	ErrAgeRestricted                 = &Error{ID: localization.ErrorAgeRestricted.ID}
+	ErrInstagramCookies              = &Error{ID: localization.ErrorInstagramCookies.ID}
 )
 
 func HashedError(err error) string {

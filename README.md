@@ -45,7 +45,8 @@ this fork is based on [govdbot/govd](https://github.com/govdbot/govd). general s
 
 * **max video quality** in `/settings` — Best / 2160p / 1080p / 720p / 480p (default Best = no cap). applies to every extractor that exposes multiple video formats. already-cached downloads keep their previous quality until you re-download or clear the media cache.
 * **captions** setting is available in private chats as well as groups.
-* **instagram** uses real session cookies from `private/cookies/` (never commit them) and falls back to **yt-dlp** when GraphQL fails.
+* **instagram** uses real session cookies from `private/cookies/` (never commit them). fallback chain after GraphQL: authenticated **media info API** (photos + mixed carousels) → **yt-dlp** → embed → iGram. clearer `ErrorInstagramCookies` when `sessionid` is missing/expired.
+* **youtube** tries configured Invidious instances first, then falls back to **yt-dlp** (optional `private/cookies/youtube.txt`).
 * **inline mode** shows a localized **source** button on the processing placeholder (useful when BotFather Inline Feedback is off and the placeholder never updates).
 
 ### using the new settings
@@ -65,7 +66,16 @@ authenticated extractors read netscape-format cookie files under `private/cookie
 * do **not** commit cookie files, `.env`, or `private/config.yaml`.
 * after updating cookies, restart the bot container so clients reload them.
 
-without valid instagram cookies, GraphQL often returns 401; this fork then tries yt-dlp with the same cookie file when present.
+instagram cookies must include **`sessionid`** (HttpOnly). without it the bot refuses the install path / shows a clear cookie error instead of a cryptic hash.
+
+instagram download order in this fork:
+
+1. GraphQL (desktop-looking headers; default networking UA is mobile Chrome 88 if unset)
+2. media info API `/api/v1/media/{id}/info/` with cookies — maps photo / video / carousel (including mixed albums); uses a desktop Chrome 124 User-Agent
+3. yt-dlp with the same cookie file (video-oriented)
+4. embed / iGram last-resort paths
+
+prefer a **dedicated secondary** Instagram account for the VPS. reusing a primary account from a datacenter IP can trigger Meta automation checkpoints.
 
 ### building this fork
 

@@ -42,6 +42,10 @@ other = "questo contenuto ha restrizioni di età e non può essere accessibile"
 hash = "sha1-62c2e1cba75e4fb31392484973781bcbe5c6b62e"
 other = "questa istanza non è autenticata con questo servizio"
 
+[ErrorInstagramCookies]
+hash = "sha1-instagram-cookies-it"
+other = "cookie Instagram mancanti o scaduti (serve sessionid). riesporta da Chrome loggato e reinstalla con lo script"
+
 [ErrorDurationTooLong]
 hash = "sha1-079cb9174494931fe6b2ae1389082893ef4fe805"
 other = "questo video è troppo lungo e supera la durata massima consentita per questa istanza"

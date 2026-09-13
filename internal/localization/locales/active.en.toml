@@ -11,6 +11,7 @@ DisabledExtractorsSettingsMessage = "select which extractors should be disabled.
 EnabledButton = "enabled"
 ErrorAgeRestricted = "this content is age-restricted and cannot be accessed"
 ErrorAuthenticationNeeded = "this instance is not authenticated with this service"
+ErrorInstagramCookies = "instagram cookies are missing or expired (need sessionid). re-export from a logged-in browser and reinstall"
 ErrorDurationTooLong = "this video is too long and exceeds the maximum allowed duration for this instance"
 ErrorFileTooLarge = "this file is too large and exceeds the maximum allowed size for this instance"
 ErrorGeoRestrictedContent = "this content has geo-restrictions and cannot be accessed from the server's location"
