@@ -143,3 +143,26 @@ type Result struct {
 	OriginalWidth  int              `json:"original_width"`
 	Pk             string           `json:"pk"`
 }
+
+// MediaInfoResponse is the Instagram private/web API media info payload.
+type MediaInfoResponse struct {
+	Items  []*MediaInfoItem `json:"items"`
+	Status string           `json:"status"`
+}
+
+type MediaInfoItem struct {
+	PK             any              `json:"pk"`
+	Code           string           `json:"code"`
+	MediaType      int              `json:"media_type"`
+	Caption        *MediaCaption    `json:"caption"`
+	ImageVersions  *ImageVersions   `json:"image_versions2"`
+	VideoVersions  []*VideoVersions `json:"video_versions"`
+	CarouselMedia  []*MediaInfoItem `json:"carousel_media"`
+	OriginalWidth  int              `json:"original_width"`
+	OriginalHeight int              `json:"original_height"`
+	VideoDuration  float64          `json:"video_duration"`
+}
+
+type MediaCaption struct {
+	Text string `json:"text"`
+}

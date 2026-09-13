@@ -6,6 +6,7 @@ import (
 	"maps"
 	"net/http"
 	"regexp"
+	"strings"
 
 	"github.com/bytedance/sonic"
 	"github.com/govdbot/govd/internal/database"
@@ -26,35 +27,66 @@ var Extractor = &models.Extractor{
 	Redirect:   false,
 
 	GetFunc: func(ctx *models.ExtractorContext) (*models.ExtractorResponse, error) {
+		if !HasSessionIDCookie() {
+			return nil, util.ErrInstagramCookies
+		}
 		// method 1: get media from GQL web API (uses real session cookies)
 		media, err1 := GetGQLMedia(ctx)
+		if err1 == nil && mediaHasItems(media) {
+			return &models.ExtractorResponse{
+				Media: media,
+			}, nil
+		}
 		if err1 == nil {
+			err1 = fmt.Errorf("graphql returned no media items")
+		}
+		// method 2: authenticated /api/v1/media/{id}/info/ (photos + mixed carousels)
+		media, err2 := GetMediaInfoMedia(ctx)
+		if err2 == nil && mediaHasItems(media) {
 			return &models.ExtractorResponse{
 				Media: media,
 			}, nil
 		}
-		// method 2: yt-dlp fallback (requires yt-dlp + private/cookies/instagram.txt)
-		media, err2 := GetYTDLPMedia(ctx)
 		if err2 == nil {
+			err2 = fmt.Errorf("media info returned no media items")
+		}
+		// method 3: yt-dlp fallback (videos; photos often unsupported)
+		media, err3 := GetYTDLPMedia(ctx)
+		if err3 == nil && mediaHasItems(media) {
 			return &models.ExtractorResponse{
 				Media: media,
 			}, nil
 		}
-		// method 3: get media from embed page
-		media, err3 := GetEmbedMedia(ctx)
 		if err3 == nil {
+			err3 = fmt.Errorf("yt-dlp returned no media items")
+		}
+		// method 4: get media from embed page
+		media, err4 := GetEmbedMedia(ctx)
+		if err4 == nil && mediaHasItems(media) {
 			return &models.ExtractorResponse{
 				Media: media,
 			}, nil
 		}
-		// method 4: get media from 3rd party service (unlikely)
-		media, err4 := GetIGramPost(ctx)
 		if err4 == nil {
+			err4 = fmt.Errorf("embed returned no media items")
+		}
+		// method 5: get media from 3rd party service (unlikely)
+		media, err5 := GetIGramPost(ctx)
+		if err5 == nil && mediaHasItems(media) {
 			return &models.ExtractorResponse{
 				Media: media,
 			}, nil
 		}
-		return nil, fmt.Errorf("all methods failed: %w; %w; %w; %w", err1, err2, err3, err4)
+		if err5 == nil {
+			err5 = fmt.Errorf("igram returned no media items")
+		}
+		if isInstagramAuthFailure(err1) || isInstagramAuthFailure(err2) {
+			return nil, util.ErrInstagramCookies
+		}
+		return nil, fmt.Errorf(
+			"all methods failed (no extractable media): gql=%v; media_info=%v; yt-dlp=%v; embed=%v; igram=%v",
+			err1, err2, err3, err4, err5,
+		)
 	},
 }
 
@@ -307,4 +339,30 @@ func GetStoryFromIGram(ctx *models.ExtractorContext) (*IGramStoryResponse, error
 	}
 
 	return &story, nil
+}
+
+
+func mediaHasItems(media *models.Media) bool {
+	return media != nil && len(media.Items) > 0
+}
+
+func HasSessionIDCookie() bool {
+	for _, c := range util.GetExtractorCookies("instagram") {
+		if c != nil && c.Name == "sessionid" && c.Value != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func isInstagramAuthFailure(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "401") ||
+		strings.Contains(msg, "403") ||
+		strings.Contains(msg, "unauthorized") ||
+		strings.Contains(msg, "forbidden") ||
+		strings.Contains(msg, "login_required")
 }
