@@ -2,6 +2,7 @@ package instagram
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,6 +27,30 @@ func GetYTDLPMedia(ctx *models.ExtractorContext) (*models.Media, error) {
 	if _, err := os.Stat(instagramCookieFile); err != nil {
 		return nil, fmt.Errorf("instagram cookie file not found")
 	}
+
+	// yt-dlp may rewrite --cookies files and drop sessionid; always use a temp copy.
+	cookiesCopy, err := os.CreateTemp("", "ig-cookies-*.txt")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp cookie file: %w", err)
+	}
+	cookiesCopyPath := cookiesCopy.Name()
+	src, err := os.Open(instagramCookieFile)
+	if err != nil {
+		cookiesCopy.Close()
+		_ = os.Remove(cookiesCopyPath)
+		return nil, fmt.Errorf("failed to open cookie file: %w", err)
+	}
+	_, copyErr := io.Copy(cookiesCopy, src)
+	src.Close()
+	closeErr := cookiesCopy.Close()
+	if copyErr != nil || closeErr != nil {
+		_ = os.Remove(cookiesCopyPath)
+		if copyErr != nil {
+			return nil, fmt.Errorf("failed to copy cookie file: %w", copyErr)
+		}
+		return nil, fmt.Errorf("failed to close temp cookie file: %w", closeErr)
+	}
+	defer os.Remove(cookiesCopyPath)
 
 	downloadsDir := config.Env.DownloadsDirectory
 	if downloadsDir == "" {
@@ -68,7 +93,7 @@ func GetYTDLPMedia(ctx *models.ExtractorContext) (*models.Media, error) {
 		"--no-playlist",
 		"--no-warnings",
 		"--skip-download",
-		"--cookies", instagramCookieFile,
+		"--cookies", cookiesCopyPath,
 		"--print", "%(description)s",
 		contentURL,
 	)
@@ -85,7 +110,7 @@ func GetYTDLPMedia(ctx *models.ExtractorContext) (*models.Media, error) {
 		"--no-playlist",
 		"--no-warnings",
 		"--no-progress",
-		"--cookies", instagramCookieFile,
+		"--cookies", cookiesCopyPath,
 		"-f", "bv*+ba/b",
 		"--merge-output-format", "mp4",
 		"-o", outTemplate,

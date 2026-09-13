@@ -99,10 +99,29 @@ var StoriesExtractor = &models.Extractor{
 	Hidden:     true,
 
 	GetFunc: func(ctx *models.ExtractorContext) (*models.ExtractorResponse, error) {
-		media, err := GetIGramStory(ctx)
-		return &models.ExtractorResponse{
-			Media: media,
-		}, err
+		if !HasSessionIDCookie() {
+			return nil, util.ErrInstagramCookies
+		}
+		// Prefer authenticated media info (story PK is numeric ContentID).
+		media, err1 := GetMediaInfoMedia(ctx)
+		if err1 == nil && mediaHasItems(media) {
+			return &models.ExtractorResponse{Media: media}, nil
+		}
+		if err1 == nil {
+			err1 = fmt.Errorf("media info returned no media items")
+		}
+		// Fallback: third-party iGram (may fail when their build signature expires).
+		media, err2 := GetIGramStory(ctx)
+		if err2 == nil && mediaHasItems(media) {
+			return &models.ExtractorResponse{Media: media}, nil
+		}
+		if err2 == nil {
+			err2 = fmt.Errorf("igram returned no media items")
+		}
+		if isInstagramAuthFailure(err1) {
+			return nil, util.ErrInstagramCookies
+		}
+		return nil, fmt.Errorf("story methods failed: media_info=%v; igram=%v", err1, err2)
 	},
 }
 
@@ -340,7 +359,6 @@ func GetStoryFromIGram(ctx *models.ExtractorContext) (*IGramStoryResponse, error
 
 	return &story, nil
 }
-
 
 func mediaHasItems(media *models.Media) bool {
 	return media != nil && len(media.Items) > 0

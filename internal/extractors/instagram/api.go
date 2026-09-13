@@ -45,26 +45,53 @@ func ShortcodeToMediaID(shortcode string) (string, error) {
 	return strconv.FormatUint(mediaID, 10), nil
 }
 
+// resolveMediaInfoID accepts either a numeric media PK (stories) or a shortcode (posts/reels).
+func resolveMediaInfoID(contentID string) (string, error) {
+	if contentID == "" {
+		return "", fmt.Errorf("empty content id")
+	}
+	allDigits := true
+	for _, r := range contentID {
+		if r < '0' || r > '9' {
+			allDigits = false
+			break
+		}
+	}
+	if allDigits {
+		return contentID, nil
+	}
+	mediaID, err := ShortcodeToMediaID(contentID)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert shortcode: %w", err)
+	}
+	return mediaID, nil
+}
+
 // GetMediaInfoMedia fetches post media via Instagram's authenticated
 // /api/v1/media/{id}/info/ endpoint. Works for photos, videos, and mixed carousels.
 func GetMediaInfoMedia(ctx *models.ExtractorContext) (*models.Media, error) {
-	mediaID, err := ShortcodeToMediaID(ctx.ContentID)
+	mediaID, err := resolveMediaInfoID(ctx.ContentID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert shortcode: %w", err)
+		return nil, err
+	}
+
+	referer := "https://www.instagram.com/p/" + ctx.ContentID + "/"
+	if ctx.ContentURL != "" {
+		referer = ctx.ContentURL
 	}
 
 	apiURL := fmt.Sprintf(mediaInfoEndpoint, mediaID)
 	headers := map[string]string{
-		"Accept":             "*/*",
-		"Accept-Language":    "en-US,en;q=0.9",
-		"x-ig-app-id":        webAppID,
-		"x-asbd-id":          "129477",
-		"x-requested-with":   "XMLHttpRequest",
-		"Sec-Fetch-Dest":     "empty",
-		"Sec-Fetch-Mode":     "cors",
-		"Sec-Fetch-Site":     "same-origin",
-		"Referer":            "https://www.instagram.com/p/" + ctx.ContentID + "/",
-		"User-Agent":         networking.DefaultUserAgent,
+		"Accept":           "*/*",
+		"Accept-Language":  "en-US,en;q=0.9",
+		"x-ig-app-id":      webAppID,
+		"x-asbd-id":        "129477",
+		"x-requested-with": "XMLHttpRequest",
+		"Sec-Fetch-Dest":   "empty",
+		"Sec-Fetch-Mode":   "cors",
+		"Sec-Fetch-Site":   "same-origin",
+		"Referer":          referer,
+		"User-Agent":       networking.DefaultUserAgent,
 	}
 
 	csrf := ""
