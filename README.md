@@ -62,6 +62,18 @@ change the quality before sending a new link. if you already downloaded the same
 
 authenticated extractors read netscape-format cookie files under `private/cookies/` (for example `instagram.txt`, `twitter.txt`, `tiktok.txt`). those paths are gitignored — put cookies only on the host that runs the bot.
 
+### Instagram cookies (admins)
+
+Admins can update Instagram cookies in a private chat with the bot:
+
+1. Prefer pasting the Netscape cookie file **as plain text** in DM (works with cloud and local Bot API; no file download).
+2. Or send a document named `instagram.txt` / `*instagram*.txt`.
+3. Commands: `/igcookies` or `/igadmin` (also a start-menu button for admins).
+4. After a successful install the bot deletes the cookie message from the chat.
+
+If you run a **local** Telegram Bot API (`BOT_API_URL`), mount the Bot API data dir into the bot container read-only, e.g. `./telegram-bot-api-data:/var/lib/telegram-bot-api:ro`, so document uploads can be read from disk. Text paste does not need that mount.
+
+
 * export cookies from a real logged-in browser session (browser extension or your usual workflow).
 * do **not** commit cookie files, `.env`, or `private/config.yaml`.
 * after updating cookies, restart the bot container so clients reload them.

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -92,13 +93,19 @@ func IGCookiesPendingFilter(msg *gotgbot.Message) bool {
 	}
 	kind := getIGPending(msg.From.Id)
 	if kind == igPendingCookie {
-		return msg.Document != nil
+		if msg.Document != nil {
+			return true
+		}
+		return message.Text(msg) && !message.Command(msg) && looksLikeNetscapeCookieText(msg.Text)
 	}
 	if kind == igPendingUsername || kind == igPendingPassword {
 		return message.Text(msg) && !message.Command(msg)
 	}
-	// No pending step: still accept a clearly named Instagram cookie file from admin DMs.
-	return msg.Document != nil && looksLikeIGCookieDocument(msg.Document)
+	// No pending step: accept named cookie documents or pasted Netscape text.
+	if msg.Document != nil && looksLikeIGCookieDocument(msg.Document) {
+		return true
+	}
+	return message.Text(msg) && !message.Command(msg) && looksLikeNetscapeCookieText(msg.Text)
 }
 
 func looksLikeIGCookieDocument(doc *gotgbot.Document) bool {
@@ -114,6 +121,22 @@ func looksLikeIGCookieDocument(doc *gotgbot.Document) bool {
 		return true
 	}
 	return strings.Contains(base, "instagram") && strings.HasSuffix(base, ".txt")
+}
+
+// looksLikeNetscapeCookieText detects a pasted Instagram cookie jar (portable; no file download).
+func looksLikeNetscapeCookieText(text string) bool {
+	text = strings.TrimSpace(text)
+	if text == "" || len(text) > igMaxCookieBytes {
+		return false
+	}
+	if !strings.Contains(text, "sessionid") {
+		return false
+	}
+	lower := strings.ToLower(text)
+	if strings.Contains(lower, "# netscape http cookie file") {
+		return true
+	}
+	return strings.Contains(lower, ".instagram.com") && strings.Contains(text, "	")
 }
 
 func IGCookiesCommandHandler(bot *gotgbot.Bot, ctx *ext.Context) error {
@@ -159,7 +182,7 @@ func IGCookiesCallbackHandler(bot *gotgbot.Bot, ctx *ext.Context) error {
 		setIGPending(userID, igPendingCookie)
 		ctx.CallbackQuery.Answer(bot, nil)
 		ctx.EffectiveMessage.Reply(bot,
-			"Invia ora il file cookie Netscape (<code>instagram.txt</code>) come documento.",
+			"Invia i cookie Netscape: <b>incolla il testo</b> del file oppure allega <code>instagram.txt</code>.",
 			&gotgbot.SendMessageOpts{ParseMode: gotgbot.ParseModeHTML},
 		)
 	case igCBUser:
@@ -198,15 +221,16 @@ func IGCookiesPendingHandler(bot *gotgbot.Bot, ctx *ext.Context) error {
 	kind := getIGPending(userID)
 	msg := ctx.EffectiveMessage
 
-	// Direct DM of instagram.txt (or similarly named) — no /igcookies step required.
+	// Direct DM: pasted Netscape text or named cookie document — no /igcookies step required.
 	if kind == igPendingNone {
-		if msg.Document == nil || !looksLikeIGCookieDocument(msg.Document) {
-			return ext.ContinueGroups
-		}
-		err := saveIGCookieDocument(bot, msg.Document)
+		err := ingestIGCookieMessage(bot, msg)
 		if err != nil {
+			if errors.Is(err, errNotIGCookieMessage) {
+				return ext.ContinueGroups
+			}
 			bot.SendMessage(msg.Chat.Id, "❌ Errore cookie: "+util.Unquote(err.Error()), nil)
 			logger.L.Warnf("ig cookie auto-upload failed: %v", err)
+			tryDeleteSensitiveMessage(bot, msg)
 			return ext.EndGroups
 		}
 		util.InvalidateCookieCache(igCookieFileName)
@@ -217,14 +241,12 @@ func IGCookiesPendingHandler(bot *gotgbot.Bot, ctx *ext.Context) error {
 
 	switch kind {
 	case igPendingCookie:
-		if msg.Document == nil {
-			return ext.ContinueGroups
-		}
-		err := saveIGCookieDocument(bot, msg.Document)
+		err := ingestIGCookieMessage(bot, msg)
 		clearIGPending(userID)
 		if err != nil {
 			bot.SendMessage(msg.Chat.Id, "❌ Errore cookie: "+util.Unquote(err.Error()), nil)
 			logger.L.Warnf("ig cookie upload failed: %v", err)
+			tryDeleteSensitiveMessage(bot, msg)
 			return ext.EndGroups
 		}
 		util.InvalidateCookieCache(igCookieFileName)
@@ -304,7 +326,7 @@ func buildIGCookiesStatusText() string {
 			"File cookie (<code>%s</code>): <b>%s</b>\n"+
 			"Contiene <code>sessionid</code>: <b>%s</b>\n"+
 			"File credenziali: <b>%s</b>\n\n"+
-			"Puoi anche inviarmi direttamente un documento <code>instagram.txt</code> in questa chat.\n\n"+
+			"Puoi inviarmi i cookie come <b>testo incollato</b> (consigliato) o come documento <code>instagram.txt</code>.\n\n"+
 			"<i>Solo storage locale. Nessun login automatico Instagram.</i>",
 		igCookiePath,
 		yesNo(cookieExists),
@@ -331,6 +353,54 @@ func igCookiesKeyboard() gotgbot.InlineKeyboardMarkup {
 	}
 }
 
+var errNotIGCookieMessage = errors.New("not an Instagram cookie message")
+
+func ingestIGCookieMessage(bot *gotgbot.Bot, msg *gotgbot.Message) error {
+	if msg == nil {
+		return errNotIGCookieMessage
+	}
+	if msg.Document != nil && (looksLikeIGCookieDocument(msg.Document) || getIGPending(msg.From.Id) == igPendingCookie) {
+		data, err := downloadTelegramDocument(bot, msg.Document.FileId)
+		if err != nil {
+			return fmt.Errorf("%w — se usi Bot API locale, incolla il contenuto come testo", err)
+		}
+		return installIGCookieContent(string(data))
+	}
+	if message.Text(msg) && looksLikeNetscapeCookieText(msg.Text) {
+		return installIGCookieContent(msg.Text)
+	}
+	return errNotIGCookieMessage
+}
+
+func installIGCookieContent(content string) error {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return fmt.Errorf("contenuto vuoto")
+	}
+	if len(content) > igMaxCookieBytes {
+		return fmt.Errorf("file troppo grande (max 2MB)")
+	}
+	if !netscapeHasSessionID(content) {
+		return fmt.Errorf("manca sessionid nel file")
+	}
+	if err := os.MkdirAll(filepath.Dir(igCookiePath), 0o700); err != nil {
+		return fmt.Errorf("mkdir: %w", err)
+	}
+	if !strings.HasSuffix(content, "\n") {
+		content += "\n"
+	}
+	tmp := igCookiePath + ".tmp"
+	if err := os.WriteFile(tmp, []byte(content), 0o600); err != nil {
+		return fmt.Errorf("write: %w", err)
+	}
+	if err := os.Rename(tmp, igCookiePath); err != nil {
+		_ = os.Remove(tmp)
+		return fmt.Errorf("rename: %w", err)
+	}
+	_ = os.Chmod(igCookiePath, 0o600)
+	return nil
+}
+
 func confirmIGCookiesInstalled(bot *gotgbot.Bot, chatID int64) {
 	hasSession := cookieFileHasSessionID(igCookiePath)
 	sessionLabel := "no"
@@ -340,7 +410,8 @@ func confirmIGCookiesInstalled(bot *gotgbot.Bot, chatID int64) {
 	text := "✅ Cookie Instagram caricati correttamente.\n" +
 		"File: <code>" + igCookiePath + "</code>\n" +
 		"sessionid: <b>" + sessionLabel + "</b>\n" +
-		"Cache ricaricata: il bot userà subito i nuovi cookie."
+		"Cache ricaricata: il bot userà subito i nuovi cookie.\n" +
+		"Messaggio cookie eliminato dalla chat."
 	_, err := bot.SendMessage(chatID, text, &gotgbot.SendMessageOpts{
 		ParseMode: gotgbot.ParseModeHTML,
 	})
@@ -350,8 +421,8 @@ func confirmIGCookiesInstalled(bot *gotgbot.Bot, chatID int64) {
 }
 
 // downloadTelegramDocument fetches a document from Telegram.
-// With a local Bot API (TELEGRAM_LOCAL), getFile returns an absolute path on the
-// shared data volume — read that directly. Otherwise download via the HTTP file URL.
+// With a local Bot API, getFile often returns a filesystem path (absolute or relative
+// under /var/lib/telegram-bot-api). Prefer reading that file; HTTP /file/bot… 404s locally.
 func downloadTelegramDocument(bot *gotgbot.Bot, fileID string) ([]byte, error) {
 	f, err := bot.GetFile(fileID, nil)
 	if err != nil {
@@ -361,11 +432,14 @@ func downloadTelegramDocument(bot *gotgbot.Bot, fileID string) ([]byte, error) {
 		return nil, fmt.Errorf("file path vuoto")
 	}
 
-	if strings.HasPrefix(f.FilePath, "/") {
-		data, err := os.ReadFile(f.FilePath)
+	candidates := localBotAPIFileCandidates(f.FilePath)
+	for _, path := range candidates {
+		data, err := os.ReadFile(path)
 		if err != nil {
-			return nil, fmt.Errorf("read local bot-api file %s: %w", f.FilePath, err)
+			continue
 		}
+		// Best-effort: remove the upload from local Bot API storage after reading.
+		_ = os.Remove(path)
 		return data, nil
 	}
 
@@ -376,7 +450,7 @@ func downloadTelegramDocument(bot *gotgbot.Bot, fileID string) ([]byte, error) {
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("download status %d", resp.StatusCode)
+		return nil, fmt.Errorf("download status %d (prova a incollare i cookie come testo)", resp.StatusCode)
 	}
 	limited := io.LimitReader(resp.Body, igMaxCookieBytes+1)
 	data, err := io.ReadAll(limited)
@@ -389,38 +463,34 @@ func downloadTelegramDocument(bot *gotgbot.Bot, fileID string) ([]byte, error) {
 	return data, nil
 }
 
+func localBotAPIFileCandidates(filePath string) []string {
+	filePath = strings.TrimSpace(filePath)
+	if filePath == "" {
+		return nil
+	}
+	var out []string
+	if strings.HasPrefix(filePath, "/") {
+		out = append(out, filePath)
+	}
+	// Local Bot API relative paths: "<token>/documents/file_X"
+	joined := filepath.Join("/var/lib/telegram-bot-api", filePath)
+	out = append(out, joined)
+	// Some builds strip the leading slash inconsistently.
+	if strings.HasPrefix(filePath, "var/lib/telegram-bot-api/") {
+		out = append(out, "/"+filePath)
+	}
+	return out
+}
+
 func saveIGCookieDocument(bot *gotgbot.Bot, doc *gotgbot.Document) error {
 	if doc.FileSize > igMaxCookieBytes {
 		return fmt.Errorf("file troppo grande (max 2MB)")
 	}
-
 	data, err := downloadTelegramDocument(bot, doc.FileId)
 	if err != nil {
 		return err
 	}
-	if len(data) > igMaxCookieBytes {
-		return fmt.Errorf("file troppo grande (max 2MB)")
-	}
-
-	content := string(data)
-	if !netscapeHasSessionID(content) {
-		return fmt.Errorf("manca sessionid nel file")
-	}
-
-	if err := os.MkdirAll(filepath.Dir(igCookiePath), 0o700); err != nil {
-		return fmt.Errorf("mkdir: %w", err)
-	}
-
-	tmp := igCookiePath + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return fmt.Errorf("write: %w", err)
-	}
-	if err := os.Rename(tmp, igCookiePath); err != nil {
-		_ = os.Remove(tmp)
-		return fmt.Errorf("rename: %w", err)
-	}
-	_ = os.Chmod(igCookiePath, 0o600)
-	return nil
+	return installIGCookieContent(string(data))
 }
 
 func netscapeHasSessionID(content string) bool {
@@ -526,8 +596,10 @@ func fileExists(path string) bool {
 }
 
 func tryDeleteSensitiveMessage(bot *gotgbot.Bot, msg *gotgbot.Message) {
-	if msg == nil {
+	if msg == nil || bot == nil {
 		return
 	}
-	_, _ = msg.Delete(bot, nil)
+	if _, err := msg.Delete(bot, nil); err != nil {
+		logger.L.Warnf("failed to delete sensitive IG message %d: %v", msg.MessageId, err)
+	}
 }
