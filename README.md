@@ -79,6 +79,10 @@ HTTP User-Agent is centralized as `networking.DefaultUserAgent` (Windows Chrome 
 
 prefer a **dedicated secondary** Instagram account for the VPS. reusing a primary account from a datacenter IP can trigger Meta automation checkpoints.
 
+### admin error alerts
+
+set `ADMINS` in the host `.env` to one or more numeric Telegram user IDs (comma-separated). those accounts get a private DM with error details when Instagram auth fails or an unexpected download error is logged. end users only see a generic “error reported” message. do not commit real admin IDs.
+
 ### building this fork
 
 default image (includes yt-dlp, CGO-free build when libheif packages break):

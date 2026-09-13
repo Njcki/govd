@@ -17,7 +17,7 @@ var (
 	}
 	ErrorMessage = &i18n.Message{
 		ID:    "ErrorMessage",
-		Other: "an error occurred, please try again later",
+		Other: "an error occurred. the error has been reported, please try again later",
 	}
 	AddedToGroupMessage = &i18n.Message{
 		ID:    "AddedToGroupMessage",
@@ -181,7 +181,7 @@ var (
 	}
 	ErrorInstagramCookies = &i18n.Message{
 		ID:    "ErrorInstagramCookies",
-		Other: "instagram cookies are missing or expired (need a valid sessionid). re-export cookies from a logged-in browser and run the install script",
+		Other: "an error occurred. the error has been reported, please try again later",
 	}
 	ErrorFileTooLarge = &i18n.Message{
 		ID:    "ErrorFileTooLarge",

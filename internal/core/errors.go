@@ -2,11 +2,14 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/PaulSonOfLars/gotgbot/v2"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
+	"github.com/govdbot/govd/internal/config"
 	"github.com/govdbot/govd/internal/database"
+	"github.com/govdbot/govd/internal/logger"
 	"github.com/govdbot/govd/internal/localization"
 	"github.com/govdbot/govd/internal/models"
 	"github.com/govdbot/govd/internal/util"
@@ -30,6 +33,9 @@ func HandleError(
 				MessageID: botError.ID,
 			}),
 		)
+		if shouldNotifyAdmins(botError.ID) {
+			notifyAdmins(b, formatAdminErrorAlert(ctx, extractorCtx, botError.ID, err, ""))
+		}
 		return
 	}
 
@@ -67,6 +73,90 @@ func HandleError(
 			Message: err.Error(),
 		},
 	)
+	notifyAdmins(b, formatAdminErrorAlert(ctx, extractorCtx, localization.ErrorMessage.ID, err, errorID))
+}
+
+func shouldNotifyAdmins(messageID string) bool {
+	switch messageID {
+	case localization.ErrorInstagramCookies.ID,
+		localization.ErrorAuthenticationNeeded.ID:
+		return true
+	default:
+		return false
+	}
+}
+
+func formatAdminErrorAlert(
+	ctx *ext.Context,
+	extractorCtx *models.ExtractorContext,
+	kind string,
+	err error,
+	errorID string,
+) string {
+	var b strings.Builder
+	b.WriteString("🛠 <b>govd error report</b>\n")
+	b.WriteString("<b>kind:</b> <code>")
+	b.WriteString(kind)
+	b.WriteString("</code>\n")
+	if errorID != "" {
+		b.WriteString("<b>id:</b> <code>")
+		b.WriteString(errorID)
+		b.WriteString("</code>\n")
+	}
+	if extractorCtx != nil && extractorCtx.Extractor != nil {
+		b.WriteString("<b>extractor:</b> <code>")
+		b.WriteString(extractorCtx.Extractor.ID)
+		b.WriteString("</code>\n")
+	}
+	if extractorCtx != nil && extractorCtx.ContentURL != "" {
+		b.WriteString("<b>url:</b> ")
+		b.WriteString(extractorCtx.ContentURL)
+		b.WriteString("\n")
+	}
+	if extractorCtx != nil && extractorCtx.Chat != nil {
+		b.WriteString("<b>chat_id:</b> <code>")
+		b.WriteString(fmt.Sprintf("%d", extractorCtx.Chat.ChatID))
+		b.WriteString("</code>\n")
+	}
+	if ctx != nil && ctx.EffectiveUser != nil {
+		b.WriteString("<b>user_id:</b> <code>")
+		b.WriteString(fmt.Sprintf("%d", ctx.EffectiveUser.Id))
+		b.WriteString("</code>\n")
+	}
+	b.WriteString("<b>detail:</b>\n<pre>")
+	detail := err.Error()
+	if len(detail) > 1500 {
+		detail = detail[:1500] + "…"
+	}
+	b.WriteString(htmlEscape(detail))
+	b.WriteString("</pre>")
+	return b.String()
+}
+
+func htmlEscape(s string) string {
+	replacer := strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+	)
+	return replacer.Replace(s)
+}
+
+func notifyAdmins(b *gotgbot.Bot, text string) {
+	if b == nil || text == "" || len(config.Env.Admins) == 0 {
+		return
+	}
+	for _, adminID := range config.Env.Admins {
+		_, err := b.SendMessage(adminID, text, &gotgbot.SendMessageOpts{
+			ParseMode: gotgbot.ParseModeHTML,,
+			LinkPreviewOptions: &gotgbot.LinkPreviewOptions{
+				IsDisabled: true,
+			},
+		})
+		if err != nil {
+			logger.L.Warnf("failed to notify admin %d: %v", adminID, err)
+		}
+	}
 }
 
 func isChatWriteForbidden(err error) bool {

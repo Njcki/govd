@@ -43,8 +43,8 @@ hash = "sha1-62c2e1cba75e4fb31392484973781bcbe5c6b62e"
 other = "questa istanza non è autenticata con questo servizio"
 
 [ErrorInstagramCookies]
-hash = "sha1-instagram-cookies-it"
-other = "cookie Instagram mancanti o scaduti (serve sessionid). riesporta da Chrome loggato e reinstalla con lo script"
+hash = "sha1-instagram-cookies-reported-it"
+other = "si è verificato un errore. l'errore è stato segnalato, riprova più tardi"
 
 [ErrorDurationTooLong]
 hash = "sha1-079cb9174494931fe6b2ae1389082893ef4fe805"
@@ -71,8 +71,8 @@ hash = "sha1-281844facb4347d00897dcf3ff65439f90ad84fd"
 other = "il limite dell'album multimediale supera il massimo consentito per questo gruppo. modifica /settings per aumentare il limite"
 
 [ErrorMessage]
-hash = "sha1-614df8086d667e71dce55d45e98a555ce8d44ae0"
-other = "si è verificato un errore, riprova più tardi"
+hash = "sha1-error-message-reported-it"
+other = "si è verificato un errore. l'errore è stato segnalato, riprova più tardi"
 
 [ErrorNSFWNotAllowed]
 hash = "sha1-0f715698a99fb506afb2427cf53c5161873003ef"
