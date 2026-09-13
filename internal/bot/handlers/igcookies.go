@@ -349,33 +349,54 @@ func confirmIGCookiesInstalled(bot *gotgbot.Bot, chatID int64) {
 	}
 }
 
-func saveIGCookieDocument(bot *gotgbot.Bot, doc *gotgbot.Document) error {
-	if doc.FileSize > igMaxCookieBytes {
-		return fmt.Errorf("file troppo grande (max 2MB)")
-	}
-
-	f, err := bot.GetFile(doc.FileId, nil)
+// downloadTelegramDocument fetches a document from Telegram.
+// With a local Bot API (TELEGRAM_LOCAL), getFile returns an absolute path on the
+// shared data volume — read that directly. Otherwise download via the HTTP file URL.
+func downloadTelegramDocument(bot *gotgbot.Bot, fileID string) ([]byte, error) {
+	f, err := bot.GetFile(fileID, nil)
 	if err != nil {
-		return fmt.Errorf("getFile: %w", err)
+		return nil, fmt.Errorf("getFile: %w", err)
 	}
 	if f.FilePath == "" {
-		return fmt.Errorf("file path vuoto")
+		return nil, fmt.Errorf("file path vuoto")
+	}
+
+	if strings.HasPrefix(f.FilePath, "/") {
+		data, err := os.ReadFile(f.FilePath)
+		if err != nil {
+			return nil, fmt.Errorf("read local bot-api file %s: %w", f.FilePath, err)
+		}
+		return data, nil
 	}
 
 	url := f.URL(bot, nil)
 	resp, err := http.Get(url) //nolint:gosec // Telegram Bot API file URL
 	if err != nil {
-		return fmt.Errorf("download: %w", err)
+		return nil, fmt.Errorf("download: %w", err)
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download status %d", resp.StatusCode)
+		return nil, fmt.Errorf("download status %d", resp.StatusCode)
 	}
-
 	limited := io.LimitReader(resp.Body, igMaxCookieBytes+1)
 	data, err := io.ReadAll(limited)
 	if err != nil {
-		return fmt.Errorf("read: %w", err)
+		return nil, fmt.Errorf("read: %w", err)
+	}
+	if len(data) > igMaxCookieBytes {
+		return nil, fmt.Errorf("file troppo grande (max 2MB)")
+	}
+	return data, nil
+}
+
+func saveIGCookieDocument(bot *gotgbot.Bot, doc *gotgbot.Document) error {
+	if doc.FileSize > igMaxCookieBytes {
+		return fmt.Errorf("file troppo grande (max 2MB)")
+	}
+
+	data, err := downloadTelegramDocument(bot, doc.FileId)
+	if err != nil {
+		return err
 	}
 	if len(data) > igMaxCookieBytes {
 		return fmt.Errorf("file troppo grande (max 2MB)")
