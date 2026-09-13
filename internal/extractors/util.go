@@ -141,3 +141,12 @@ func getExtractorsMap() map[string][]*models.Extractor {
 func getExtractorsByHost(host string) []*models.Extractor {
 	return extractorsByHost[host]
 }
+
+func ByID(id string) *models.Extractor {
+	for _, extractor := range Extractors {
+		if extractor.ID == id {
+			return extractor
+		}
+	}
+	return nil
+}

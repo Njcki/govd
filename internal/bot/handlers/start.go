@@ -1,10 +1,14 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
+	"strings"
 
 	"github.com/govdbot/govd/internal/config"
+	"github.com/govdbot/govd/internal/core"
 	"github.com/govdbot/govd/internal/localization"
+	"github.com/govdbot/govd/internal/logger"
 	"github.com/govdbot/govd/internal/util"
 	"github.com/nicksnyder/go-i18n/v2/i18n"
 
@@ -16,6 +20,29 @@ func StartHandler(bot *gotgbot.Bot, ctx *ext.Context) error {
 	if ctx.EffectiveChat.Type != gotgbot.ChatTypePrivate {
 		return HandleGroupStart(bot, ctx)
 	}
+
+	if payload := albumStartPayload(ctx); payload != "" {
+		extractorID, contentID, ok := core.ParseAlbumStartPayload(context.Background(), payload)
+		if ok {
+			err := core.HandleInlineAlbumOpen(bot, ctx, extractorID, contentID)
+			if err != nil {
+				logger.L.Errorf("inline album open failed: %v", err)
+				chat, chatErr := util.ChatFromContext(ctx)
+				if chatErr == nil {
+					localizer := localization.New(chat.Language)
+					ctx.EffectiveMessage.Reply(
+						bot,
+						localizer.T(&i18n.LocalizeConfig{
+							MessageID: localization.ErrorMessage.ID,
+						}),
+						nil,
+					)
+				}
+			}
+			return nil
+		}
+	}
+
 	user := ctx.EffectiveUser
 
 	chat, err := util.ChatFromContext(ctx)
@@ -50,6 +77,21 @@ func StartHandler(bot *gotgbot.Bot, ctx *ext.Context) error {
 		)
 	}
 	return nil
+}
+
+func albumStartPayload(ctx *ext.Context) string {
+	if ctx.Message == nil {
+		return ""
+	}
+	args := ctx.Args()
+	if len(args) < 2 {
+		return ""
+	}
+	payload := strings.TrimSpace(args[1])
+	if strings.HasPrefix(payload, "a_") {
+		return payload
+	}
+	return ""
 }
 
 func getStartKeyboard(

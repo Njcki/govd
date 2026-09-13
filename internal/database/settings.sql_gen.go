@@ -58,6 +58,22 @@ func (q *Queries) SetChatLanguage(ctx context.Context, arg SetChatLanguageParams
 	return err
 }
 
+const setChatMaxVideoHeight = `-- name: SetChatMaxVideoHeight :exec
+UPDATE settings
+SET max_video_height = $1, updated_at = CURRENT_TIMESTAMP
+WHERE chat_id = $2
+`
+
+type SetChatMaxVideoHeightParams struct {
+	MaxVideoHeight int32
+	ChatID         int64
+}
+
+func (q *Queries) SetChatMaxVideoHeight(ctx context.Context, arg SetChatMaxVideoHeightParams) error {
+	_, err := q.db.Exec(ctx, setChatMaxVideoHeight, arg.MaxVideoHeight, arg.ChatID)
+	return err
+}
+
 const setChatMediaAlbumLimit = `-- name: SetChatMediaAlbumLimit :exec
 UPDATE settings
 SET media_album_limit = $1, updated_at = CURRENT_TIMESTAMP
@@ -115,21 +131,5 @@ WHERE chat_id = $1
 
 func (q *Queries) ToggleChatSilentMode(ctx context.Context, chatID int64) error {
 	_, err := q.db.Exec(ctx, toggleChatSilentMode, chatID)
-	return err
-}
-
-const setChatMaxVideoHeight = `-- name: SetChatMaxVideoHeight :exec
-UPDATE settings
-SET max_video_height = $1, updated_at = CURRENT_TIMESTAMP
-WHERE chat_id = $2
-`
-
-type SetChatMaxVideoHeightParams struct {
-	MaxVideoHeight int32
-	ChatID         int64
-}
-
-func (q *Queries) SetChatMaxVideoHeight(ctx context.Context, arg SetChatMaxVideoHeightParams) error {
-	_, err := q.db.Exec(ctx, setChatMaxVideoHeight, arg.MaxVideoHeight, arg.ChatID)
 	return err
 }

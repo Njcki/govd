@@ -162,6 +162,21 @@ type Errors struct {
 	LastSeen    pgtype.Timestamp
 }
 
+type InlineAlbumPayload struct {
+	Hash        string
+	ExtractorID string
+	ContentID   string
+	CreatedAt   pgtype.Timestamptz
+}
+
+type InlineAlbumRef struct {
+	UserID      int64
+	ExtractorID string
+	ContentID   string
+	MessageID   int64
+	CreatedAt   pgtype.Timestamptz
+}
+
 type Media struct {
 	ID          int64
 	ContentID   string

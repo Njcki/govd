@@ -195,3 +195,15 @@ other = "benvenuto {{.Name}} in govd, un bot telegram open-source per scaricare 
 [SupportedExtractorsMessage]
 hash = "sha1-c16d18ef8e24a2d2df3d011dbac5282bbd8783ca"
 other = "elenco degli estrattori supportati dal bot"
+
+[OpenInBotButton]
+hash = "sha1-open-in-bot-button-it"
+other = "Apri nel bot"
+
+[AlbumCompleteMessage]
+hash = "sha1-album-complete-message-it"
+other = "Album completo."
+
+[AlbumAlreadySentMessage]
+hash = "sha1-album-already-sent-message-it"
+other = "Album già inviato."

@@ -58,9 +58,6 @@ func executeDownload(extractorCtx *models.ExtractorContext, isInline bool) (*mod
 	if config.Env.Caching {
 		task, err := taskFromDatabase(extractorCtx)
 		if err == nil {
-			if isInline && len(task.Media.Items) > 1 {
-				return nil, util.ErrInlineMediaAlbum
-			}
 			err = checkAlbumLimit(
 				len(task.Media.Items),
 				extractorCtx.Chat,
@@ -81,9 +78,6 @@ func executeDownload(extractorCtx *models.ExtractorContext, isInline bool) (*mod
 		return nil, ErrNoMedia
 	}
 
-	if isInline && len(resp.Media.Items) > 1 {
-		return nil, util.ErrInlineMediaAlbum
-	}
 	err = checkAlbumLimit(
 		len(resp.Media.Items),
 		extractorCtx.Chat,

@@ -207,4 +207,16 @@ var (
 		ID:    "ErrorPermissionDenied",
 		Other: "the bot does not have sufficient permissions to send this media. please grant the necessary permissions and try again",
 	}
+	OpenInBotButton = &i18n.Message{
+		ID:    "OpenInBotButton",
+		Other: "Apri nel bot",
+	}
+	AlbumCompleteMessage = &i18n.Message{
+		ID:    "AlbumCompleteMessage",
+		Other: "Album completo.",
+	}
+	AlbumAlreadySentMessage = &i18n.Message{
+		ID:    "AlbumAlreadySentMessage",
+		Other: "Album già inviato.",
+	}
 )

@@ -8,8 +8,11 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/govdbot/govd/internal/config"
 	"github.com/govdbot/govd/internal/database"
+	"github.com/govdbot/govd/internal/localization"
+	"github.com/govdbot/govd/internal/logger"
 	"github.com/govdbot/govd/internal/models"
 	"github.com/govdbot/govd/internal/util"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
 )
 
 func SendFormats(
@@ -157,15 +160,61 @@ func SendInlineFormats(
 		return err
 	}
 
-	_, _, err = bot.EditMessageMedia(
-		inputMedia,
-		&gotgbot.EditMessageMediaOpts{
-			InlineMessageId: ctx.ChosenInlineResult.InlineMessageId,
-		},
-	)
+	editOpts := &gotgbot.EditMessageMediaOpts{
+		InlineMessageId: ctx.ChosenInlineResult.InlineMessageId,
+	}
+	if len(formats) > 1 {
+		markup, mkErr := inlineAlbumReplyMarkup(bot, extractorCtx, media)
+		if mkErr != nil {
+			logger.L.Errorf("failed to build album open button: %v", mkErr)
+		} else if markup != nil {
+			editOpts.ReplyMarkup = *markup
+		}
+	}
+
+	_, _, err = bot.EditMessageMedia(inputMedia, editOpts)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func inlineAlbumReplyMarkup(
+	bot *gotgbot.Bot,
+	extractorCtx *models.ExtractorContext,
+	media *models.Media,
+) (*gotgbot.InlineKeyboardMarkup, error) {
+	localizer := localization.New(extractorCtx.Chat.Language)
+	payload, err := BuildAlbumStartPayload(
+		extractorCtx.Context,
+		extractorCtx.Extractor.ID,
+		media.ContentID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	openText := localizer.T(&i18n.LocalizeConfig{
+		MessageID: localization.OpenInBotButton.ID,
+	})
+	keyboard := [][]gotgbot.InlineKeyboardButton{
+		{
+			{
+				Text: openText,
+				Url:  fmt.Sprintf("https://t.me/%s?start=%s", bot.Username, payload),
+			},
+		},
+	}
+	if media.ContentURL != "" {
+		keyboard = append(keyboard, []gotgbot.InlineKeyboardButton{
+			{
+				Text: localizer.T(&i18n.LocalizeConfig{
+					MessageID: localization.SourceButton.ID,
+				}),
+				Url: media.ContentURL,
+			},
+		})
+	}
+	return &gotgbot.InlineKeyboardMarkup{InlineKeyboard: keyboard}, nil
 }
