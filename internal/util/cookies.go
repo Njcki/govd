@@ -44,3 +44,14 @@ func ParseCookieFile(fileName string) []*http.Cookie {
 	logger.L.Debugf("parsed cookie file: %s", fileName)
 	return cookies
 }
+
+// InvalidateCookieCache drops a cached Netscape cookie file so the next
+// GetExtractorCookies / ParseCookieFile reloads from disk.
+func InvalidateCookieCache(fileName string) {
+	delete(cookiesCache, fileName)
+}
+
+// InvalidateAllCookieCaches clears every cached cookie file.
+func InvalidateAllCookieCaches() {
+	clear(cookiesCache)
+}

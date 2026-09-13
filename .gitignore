@@ -26,3 +26,6 @@ CLAUDE.md
 private/cookies/
 private/config.yaml
 **/cookies/*.txt
+private/ig_credentials.env
+private/ig_login.json
+private/*.env

@@ -6,3 +6,7 @@ config.yaml
 .env
 *.pem
 id_*
+ig_credentials.env
+ig_login.json
+*.env
+*.json

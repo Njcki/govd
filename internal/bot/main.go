@@ -117,6 +117,25 @@ func registerHandlers(dispatcher *ext.Dispatcher) *ext.Dispatcher {
 		botHandlers.InlineLoadingHandler,
 	))
 
+	// instagram cookies (admin only)
+	dispatcher.AddHandler(handlers.NewCommand(
+		"igcookies",
+		botHandlers.IGCookiesCommandHandler,
+	))
+	dispatcher.AddHandler(handlers.NewCommand(
+		"igadmin",
+		botHandlers.IGCookiesCommandHandler,
+	))
+	dispatcher.AddHandler(handlers.NewCallback(
+		callbackquery.Prefix("igcookies:"),
+		botHandlers.IGCookiesCallbackHandler,
+	))
+	// higher priority than URL handler so pending admin replies are captured first
+	dispatcher.AddHandlerToGroup(handlers.NewMessage(
+		botHandlers.IGCookiesPendingFilter,
+		botHandlers.IGCookiesPendingHandler,
+	), -1)
+
 	// start
 	dispatcher.AddHandler(handlers.NewCommand(
 		"start",

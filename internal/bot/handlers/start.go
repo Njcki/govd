@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/govdbot/govd/internal/config"
@@ -51,7 +52,7 @@ func StartHandler(bot *gotgbot.Bot, ctx *ext.Context) error {
 	}
 	localizer := localization.New(chat.Language)
 
-	keyboard := getStartKeyboard(bot, localizer)
+	keyboard := getStartKeyboard(bot, localizer, user.Id)
 
 	text := localizer.T(&i18n.LocalizeConfig{
 		MessageID: localization.StartMessage.ID,
@@ -97,6 +98,7 @@ func albumStartPayload(ctx *ext.Context) string {
 func getStartKeyboard(
 	bot *gotgbot.Bot,
 	localizer *localization.Localizer,
+	userID int64,
 ) gotgbot.InlineKeyboardMarkup {
 	addButton := localizer.T(&i18n.LocalizeConfig{
 		MessageID: localization.AddButton.ID,
@@ -107,34 +109,43 @@ func getStartKeyboard(
 	extractorsButton := localizer.T(&i18n.LocalizeConfig{
 		MessageID: localization.ExtractorsButton.ID,
 	})
-	return gotgbot.InlineKeyboardMarkup{
-		InlineKeyboard: [][]gotgbot.InlineKeyboardButton{
+	rows := [][]gotgbot.InlineKeyboardButton{
+		{
 			{
-				{
-					Text: addButton,
-					Url: fmt.Sprintf(
-						"https://t.me/%s?startgroup=true",
-						bot.Username,
-					),
-				},
-			},
-			{
-				{
-					Text:         settingsButton,
-					CallbackData: "settings",
-				},
-				{
-					Text:         extractorsButton,
-					CallbackData: "extractors",
-				},
-			},
-			{
-				{
-					Text: "github",
-					Url:  config.Env.RepoURL,
-				},
+				Text: addButton,
+				Url: fmt.Sprintf(
+					"https://t.me/%s?startgroup=true",
+					bot.Username,
+				),
 			},
 		},
+		{
+			{
+				Text:         settingsButton,
+				CallbackData: "settings",
+			},
+			{
+				Text:         extractorsButton,
+				CallbackData: "extractors",
+			},
+		},
+	}
+	if slices.Contains(config.Env.Admins, userID) {
+		rows = append(rows, []gotgbot.InlineKeyboardButton{
+			{
+				Text:         "Cookie Instagram",
+				CallbackData: igCBOpen,
+			},
+		})
+	}
+	rows = append(rows, []gotgbot.InlineKeyboardButton{
+		{
+			Text: "github",
+			Url:  config.Env.RepoURL,
+		},
+	})
+	return gotgbot.InlineKeyboardMarkup{
+		InlineKeyboard: rows,
 	}
 }
 

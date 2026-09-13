@@ -301,10 +301,11 @@ func GetMessageFileSize(msg *gotgbot.Message) int64 {
 }
 
 func IsBotAdmin(ctx *ext.Context) bool {
-	chatType := ctx.EffectiveChat.Type
-	if chatType != gotgbot.ChatTypePrivate {
+	if ctx.EffectiveChat == nil || ctx.EffectiveChat.Type != gotgbot.ChatTypePrivate {
 		return false
 	}
-	userID := ctx.EffectiveMessage.From.Id
-	return slices.Contains(config.Env.Admins, userID)
+	if ctx.EffectiveUser == nil {
+		return false
+	}
+	return slices.Contains(config.Env.Admins, ctx.EffectiveUser.Id)
 }
