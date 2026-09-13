@@ -207,3 +207,7 @@ other = "Album completo."
 [AlbumAlreadySentMessage]
 hash = "sha1-album-already-sent-message-it"
 other = "Album già inviato."
+
+[InlineAlbumCaptionMessage]
+hash = "sha1-inline-album-caption-message-it"
+other = "Post con più media. Tocca Apri nel bot per gli altri."

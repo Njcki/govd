@@ -211,6 +211,10 @@ var (
 		ID:    "OpenInBotButton",
 		Other: "Apri nel bot",
 	}
+	InlineAlbumCaptionMessage = &i18n.Message{
+		ID:    "InlineAlbumCaptionMessage",
+		Other: "Post con più media. Tocca Apri nel bot per gli altri.",
+	}
 	AlbumCompleteMessage = &i18n.Message{
 		ID:    "AlbumCompleteMessage",
 		Other: "Album completo.",

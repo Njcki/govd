@@ -152,9 +152,24 @@ func SendInlineFormats(
 	fileID := util.GetMessageFileID(&msg)
 	format.Format.FileID = fileID
 
+	inlineCaption := options.Caption
+	var albumMarkup *gotgbot.InlineKeyboardMarkup
+	if len(formats) > 1 {
+		localizer := localization.New(extractorCtx.Chat.Language)
+		inlineCaption = localizer.T(&i18n.LocalizeConfig{
+			MessageID: localization.InlineAlbumCaptionMessage.ID,
+		})
+		markup, mkErr := inlineAlbumReplyMarkup(bot, extractorCtx, media)
+		if mkErr != nil {
+			logger.L.Errorf("failed to build album open button: %v", mkErr)
+		} else {
+			albumMarkup = markup
+		}
+	}
+
 	inputMedia, err := format.Format.GetInputMedia(
 		format.FilePath, format.ThumbnailFilePath,
-		options.Caption, options.IsSpoiler,
+		inlineCaption, options.IsSpoiler,
 	)
 	if err != nil {
 		return err
@@ -163,13 +178,8 @@ func SendInlineFormats(
 	editOpts := &gotgbot.EditMessageMediaOpts{
 		InlineMessageId: ctx.ChosenInlineResult.InlineMessageId,
 	}
-	if len(formats) > 1 {
-		markup, mkErr := inlineAlbumReplyMarkup(bot, extractorCtx, media)
-		if mkErr != nil {
-			logger.L.Errorf("failed to build album open button: %v", mkErr)
-		} else if markup != nil {
-			editOpts.ReplyMarkup = *markup
-		}
+	if albumMarkup != nil {
+		editOpts.ReplyMarkup = *albumMarkup
 	}
 
 	_, _, err = bot.EditMessageMedia(inputMedia, editOpts)
