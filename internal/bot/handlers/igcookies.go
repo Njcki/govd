@@ -204,14 +204,14 @@ func IGCookiesPendingHandler(bot *gotgbot.Bot, ctx *ext.Context) error {
 			return ext.ContinueGroups
 		}
 		err := saveIGCookieDocument(bot, msg.Document)
-		tryDeleteSensitiveMessage(bot, msg)
 		if err != nil {
-			msg.Reply(bot, "Errore cookie: "+util.Unquote(err.Error()), nil)
+			bot.SendMessage(msg.Chat.Id, "❌ Errore cookie: "+util.Unquote(err.Error()), nil)
 			logger.L.Warnf("ig cookie auto-upload failed: %v", err)
 			return ext.EndGroups
 		}
 		util.InvalidateCookieCache(igCookieFileName)
-		msg.Reply(bot, "Cookie Instagram ricevuti e installati (cache ricaricata).", nil)
+		confirmIGCookiesInstalled(bot, msg.Chat.Id)
+		tryDeleteSensitiveMessage(bot, msg)
 		return ext.EndGroups
 	}
 
@@ -222,14 +222,14 @@ func IGCookiesPendingHandler(bot *gotgbot.Bot, ctx *ext.Context) error {
 		}
 		err := saveIGCookieDocument(bot, msg.Document)
 		clearIGPending(userID)
-		tryDeleteSensitiveMessage(bot, msg)
 		if err != nil {
-			msg.Reply(bot, "Errore cookie: "+util.Unquote(err.Error()), nil)
+			bot.SendMessage(msg.Chat.Id, "❌ Errore cookie: "+util.Unquote(err.Error()), nil)
 			logger.L.Warnf("ig cookie upload failed: %v", err)
 			return ext.EndGroups
 		}
 		util.InvalidateCookieCache(igCookieFileName)
-		msg.Reply(bot, "Cookie Instagram salvati e cache ricaricata.", nil)
+		confirmIGCookiesInstalled(bot, msg.Chat.Id)
+		tryDeleteSensitiveMessage(bot, msg)
 		return ext.EndGroups
 
 	case igPendingUsername:
@@ -328,6 +328,24 @@ func igCookiesKeyboard() gotgbot.InlineKeyboardMarkup {
 				{Text: "Stato", CallbackData: igCBStatus},
 			},
 		},
+	}
+}
+
+func confirmIGCookiesInstalled(bot *gotgbot.Bot, chatID int64) {
+	hasSession := cookieFileHasSessionID(igCookiePath)
+	sessionLabel := "no"
+	if hasSession {
+		sessionLabel = "sì"
+	}
+	text := "✅ Cookie Instagram caricati correttamente.\n" +
+		"File: <code>" + igCookiePath + "</code>\n" +
+		"sessionid: <b>" + sessionLabel + "</b>\n" +
+		"Cache ricaricata: il bot userà subito i nuovi cookie."
+	_, err := bot.SendMessage(chatID, text, &gotgbot.SendMessageOpts{
+		ParseMode: gotgbot.ParseModeHTML,
+	})
+	if err != nil {
+		logger.L.Warnf("ig cookie confirm message failed: %v", err)
 	}
 }
 
