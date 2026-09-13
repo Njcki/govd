@@ -21,7 +21,7 @@ var (
 	webHeaders = map[string]string{
 		"Host":            "www.tiktok.com",
 		"Connection":      "keep-alive",
-		"User-Agent":      "Mozilla/5.0",
+		"User-Agent":      networking.DefaultUserAgent,
 		"Accept":          "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
 		"Accept-Language": "en-us,en;q=0.5",
 		"Sec-Fetch-Mode":  "navigate",

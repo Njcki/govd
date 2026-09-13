@@ -61,9 +61,20 @@ func (client *HTTPClient) FetchWithContext(
 	return resp, nil
 }
 
+// DefaultUserAgent is the shared browser UA for HTTP requests across extractors.
+// Previous values kept for rollback if this UA causes blocks:
+//
+//	Android Chrome 88 (old default):
+//	  Mozilla/5.0 (Linux; Android 10; SM-G960U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.181 Mobile Safari/537.36
+//	Mac Chrome 124 (old Instagram media-info):
+//	  Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+//	Windows Chrome 124 (old Facebook):
+//	  Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36
+//	TikTok minimal: Mozilla/5.0
+const DefaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+
 func generateChromeUA() string {
-	// TODO: generate random UA
-	return "Mozilla/5.0 (Linux; Android 10; SM-G960U) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/88.0.4324.181 Mobile Safari/537.36"
+	return DefaultUserAgent
 }
 
 func readRequestBody(req *http.Request) ([]byte, error) {

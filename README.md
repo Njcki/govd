@@ -70,10 +70,12 @@ instagram cookies must include **`sessionid`** (HttpOnly). without it the bot re
 
 instagram download order in this fork:
 
-1. GraphQL (desktop-looking headers; default networking UA is mobile Chrome 88 if unset)
-2. media info API `/api/v1/media/{id}/info/` with cookies — maps photo / video / carousel (including mixed albums); uses a desktop Chrome 124 User-Agent
-3. yt-dlp with the same cookie file (video-oriented)
+1. GraphQL (shared Windows Chrome 152 User-Agent + matching client hints)
+2. media info API `/api/v1/media/{id}/info/` with cookies — maps photo / video / carousel (including mixed albums); same shared User-Agent
+3. yt-dlp with the same cookie file (video-oriented; its own UA)
 4. embed / iGram last-resort paths
+
+HTTP User-Agent is centralized as `networking.DefaultUserAgent` (Windows Chrome 152). previous Android/Mac/Chrome 124 strings are kept in comments next to that constant for rollback.
 
 prefer a **dedicated secondary** Instagram account for the VPS. reusing a primary account from a datacenter IP can trigger Meta automation checkpoints.
 

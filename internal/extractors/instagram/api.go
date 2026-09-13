@@ -64,7 +64,7 @@ func GetMediaInfoMedia(ctx *models.ExtractorContext) (*models.Media, error) {
 		"Sec-Fetch-Mode":     "cors",
 		"Sec-Fetch-Site":     "same-origin",
 		"Referer":            "https://www.instagram.com/p/" + ctx.ContentID + "/",
-		"User-Agent":         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+		"User-Agent":         networking.DefaultUserAgent,
 	}
 
 	csrf := ""
