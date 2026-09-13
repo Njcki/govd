@@ -91,14 +91,29 @@ func IGCookiesPendingFilter(msg *gotgbot.Message) bool {
 		return false
 	}
 	kind := getIGPending(msg.From.Id)
-	if kind == igPendingNone {
-		return false
-	}
 	if kind == igPendingCookie {
 		return msg.Document != nil
 	}
-	// username / password: plain text, not a command
-	return message.Text(msg) && !message.Command(msg)
+	if kind == igPendingUsername || kind == igPendingPassword {
+		return message.Text(msg) && !message.Command(msg)
+	}
+	// No pending step: still accept a clearly named Instagram cookie file from admin DMs.
+	return msg.Document != nil && looksLikeIGCookieDocument(msg.Document)
+}
+
+func looksLikeIGCookieDocument(doc *gotgbot.Document) bool {
+	if doc == nil {
+		return false
+	}
+	name := strings.ToLower(strings.TrimSpace(doc.FileName))
+	if name == "" {
+		return false
+	}
+	base := filepath.Base(name)
+	if base == "instagram.txt" {
+		return true
+	}
+	return strings.Contains(base, "instagram") && strings.HasSuffix(base, ".txt")
 }
 
 func IGCookiesCommandHandler(bot *gotgbot.Bot, ctx *ext.Context) error {
@@ -181,11 +196,25 @@ func IGCookiesPendingHandler(bot *gotgbot.Bot, ctx *ext.Context) error {
 	}
 	userID := ctx.EffectiveUser.Id
 	kind := getIGPending(userID)
+	msg := ctx.EffectiveMessage
+
+	// Direct DM of instagram.txt (or similarly named) — no /igcookies step required.
 	if kind == igPendingNone {
-		return ext.ContinueGroups
+		if msg.Document == nil || !looksLikeIGCookieDocument(msg.Document) {
+			return ext.ContinueGroups
+		}
+		err := saveIGCookieDocument(bot, msg.Document)
+		tryDeleteSensitiveMessage(bot, msg)
+		if err != nil {
+			msg.Reply(bot, "Errore cookie: "+util.Unquote(err.Error()), nil)
+			logger.L.Warnf("ig cookie auto-upload failed: %v", err)
+			return ext.EndGroups
+		}
+		util.InvalidateCookieCache(igCookieFileName)
+		msg.Reply(bot, "Cookie Instagram ricevuti e installati (cache ricaricata).", nil)
+		return ext.EndGroups
 	}
 
-	msg := ctx.EffectiveMessage
 	switch kind {
 	case igPendingCookie:
 		if msg.Document == nil {
@@ -275,6 +304,7 @@ func buildIGCookiesStatusText() string {
 			"File cookie (<code>%s</code>): <b>%s</b>\n"+
 			"Contiene <code>sessionid</code>: <b>%s</b>\n"+
 			"File credenziali: <b>%s</b>\n\n"+
+			"Puoi anche inviarmi direttamente un documento <code>instagram.txt</code> in questa chat.\n\n"+
 			"<i>Solo storage locale. Nessun login automatico Instagram.</i>",
 		igCookiePath,
 		yesNo(cookieExists),
