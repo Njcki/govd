@@ -326,6 +326,7 @@ func buildIGCookiesStatusText() string {
 			"File cookie (<code>%s</code>): <b>%s</b>\n"+
 			"Contiene <code>sessionid</code>: <b>%s</b>\n"+
 			"File credenziali: <b>%s</b>\n\n"+
+			"<i>Nota:</i> <code>sessionid: sì</code> significa solo che il nome c’è nel file, non che Instagram accetti ancora la sessione.\n\n"+
 			"Puoi inviarmi i cookie come <b>testo incollato</b> (consigliato) o come documento <code>instagram.txt</code>.\n\n"+
 			"<i>Solo storage locale. Nessun login automatico Instagram.</i>",
 		igCookiePath,
@@ -372,6 +373,28 @@ func ingestIGCookieMessage(bot *gotgbot.Bot, msg *gotgbot.Message) error {
 	return errNotIGCookieMessage
 }
 
+// normalizeNetscapeExpiry rewrites expiration 0 (session) to +1y.
+// Android WebView exports often omit real expiry; some clients drop exp=0 cookies.
+func normalizeNetscapeExpiry(content string) string {
+	lines := strings.Split(content, "\n")
+	exp := fmt.Sprintf("%d", time.Now().Add(365*24*time.Hour).Unix())
+	for i, line := range lines {
+		trim := strings.TrimSpace(line)
+		if trim == "" || strings.HasPrefix(trim, "#") {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) < 7 {
+			continue
+		}
+		if parts[4] == "0" || parts[4] == "" {
+			parts[4] = exp
+			lines[i] = strings.Join(parts, "\t")
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
 func installIGCookieContent(content string) error {
 	content = strings.TrimSpace(content)
 	if content == "" {
@@ -383,6 +406,7 @@ func installIGCookieContent(content string) error {
 	if !netscapeHasSessionID(content) {
 		return fmt.Errorf("manca sessionid nel file")
 	}
+	content = normalizeNetscapeExpiry(content)
 	if err := os.MkdirAll(filepath.Dir(igCookiePath), 0o700); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
 	}
