@@ -54,6 +54,11 @@ var (
 
 	igPendingMu sync.Mutex
 	igPendingBy = map[int64]igPending{}
+
+	igProbeMu       sync.Mutex
+	igProbeCache    igSessionProbe
+	igProbeCacheAt  time.Time
+	igProbeCacheTTL = 30 * time.Minute
 )
 
 func setIGPending(userID int64, kind igPendingKind) {
@@ -315,9 +320,32 @@ type igSessionProbe struct {
 	ProbeError   string
 }
 
-// probeIGSession checks whether Instagram still accepts the stored session
-// (not just whether the sessionid cookie name is present).
+// probeIGSession returns a cached liveness check (30m) to avoid hammering Instagram.
 func probeIGSession() igSessionProbe {
+	return probeIGSessionCached(false)
+}
+
+func probeIGSessionCached(force bool) igSessionProbe {
+	igProbeMu.Lock()
+	defer igProbeMu.Unlock()
+	if !force && !igProbeCacheAt.IsZero() && time.Since(igProbeCacheAt) < igProbeCacheTTL {
+		return igProbeCache
+	}
+	st := probeIGSessionFresh()
+	igProbeCache = st
+	igProbeCacheAt = time.Now()
+	return st
+}
+
+func invalidateIGSessionProbeCache() {
+	igProbeMu.Lock()
+	defer igProbeMu.Unlock()
+	igProbeCacheAt = time.Time{}
+}
+
+// probeIGSessionFresh checks whether Instagram still accepts the stored session
+// (not just whether the sessionid cookie name is present).
+func probeIGSessionFresh() igSessionProbe {
 	st := igSessionProbe{FilePresent: fileExists(igCookiePath)}
 	if !st.FilePresent {
 		st.Detail = "file assente"
@@ -562,11 +590,12 @@ func installIGCookieContent(content string) error {
 		return fmt.Errorf("rename: %w", err)
 	}
 	_ = os.Chmod(igCookiePath, 0o600)
+	invalidateIGSessionProbeCache()
 	return nil
 }
 
 func confirmIGCookiesInstalled(bot *gotgbot.Bot, chatID int64) {
-	st := probeIGSession()
+	st := probeIGSessionCached(true)
 	var text string
 	switch {
 	case st.Alive:

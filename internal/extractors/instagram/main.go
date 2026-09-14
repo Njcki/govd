@@ -50,6 +50,10 @@ var Extractor = &models.Extractor{
 		if err2 == nil {
 			err2 = fmt.Errorf("media info returned no media items")
 		}
+		// Stop early on auth failure: further cookieed fallbacks (yt-dlp) burn the session.
+		if isInstagramAuthFailure(err1) || isInstagramAuthFailure(err2) {
+			return nil, util.ErrInstagramCookies
+		}
 		// method 3: yt-dlp fallback (videos; photos often unsupported)
 		media, err3 := GetYTDLPMedia(ctx)
 		if err3 == nil && mediaHasItems(media) {
@@ -60,7 +64,7 @@ var Extractor = &models.Extractor{
 		if err3 == nil {
 			err3 = fmt.Errorf("yt-dlp returned no media items")
 		}
-		// method 4: get media from embed page
+		// method 4: get media from embed page (no session cookies required)
 		media, err4 := GetEmbedMedia(ctx)
 		if err4 == nil && mediaHasItems(media) {
 			return &models.ExtractorResponse{
@@ -79,9 +83,6 @@ var Extractor = &models.Extractor{
 		}
 		if err5 == nil {
 			err5 = fmt.Errorf("igram returned no media items")
-		}
-		if isInstagramAuthFailure(err1) || isInstagramAuthFailure(err2) {
-			return nil, util.ErrInstagramCookies
 		}
 		return nil, fmt.Errorf(
 			"all methods failed (no extractable media): gql=%v; media_info=%v; yt-dlp=%v; embed=%v; igram=%v",
