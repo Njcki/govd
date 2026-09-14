@@ -320,15 +320,15 @@ type igSessionProbe struct {
 	ProbeError   string
 }
 
-// probeIGSession returns a cached liveness check (2h) to avoid hammering Instagram.
+// probeIGSession always does a live Instagram check (/igcookies must be realtime).
 func probeIGSession() igSessionProbe {
-	return probeIGSessionCached(false)
+	return probeIGSessionCached(true)
 }
 
 func probeIGSessionCached(force bool) igSessionProbe {
 	igProbeMu.Lock()
 	defer igProbeMu.Unlock()
-	if !force && !igProbeCacheAt.IsZero() && time.Since(igProbeCacheAt) < igProbeCacheTTL {
+	if !force && !igProbeCacheAt.IsZero() && time.Since(igProbeCacheAt) < igProbeCacheTTL { // unused for /igcookies (always force)
 		return igProbeCache
 	}
 	st := probeIGSessionFresh()
