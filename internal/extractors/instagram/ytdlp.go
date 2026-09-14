@@ -12,6 +12,7 @@ import (
 	"github.com/govdbot/govd/internal/config"
 	"github.com/govdbot/govd/internal/database"
 	"github.com/govdbot/govd/internal/models"
+	"github.com/govdbot/govd/internal/networking"
 )
 
 const instagramCookieFile = "private/cookies/instagram.txt"
@@ -92,6 +93,7 @@ func GetYTDLPMedia(ctx *models.ExtractorContext) (*models.Media, error) {
 		ytdlpPath,
 		"--no-playlist",
 		"--no-warnings",
+		"--user-agent", networking.DefaultUserAgent,
 		"--skip-download",
 		"--cookies", cookiesCopyPath,
 		"--print", "%(description)s",
@@ -110,6 +112,7 @@ func GetYTDLPMedia(ctx *models.ExtractorContext) (*models.Media, error) {
 		"--no-playlist",
 		"--no-warnings",
 		"--no-progress",
+		"--user-agent", networking.DefaultUserAgent,
 		"--cookies", cookiesCopyPath,
 		"-f", "bv*+ba/b",
 		"--merge-output-format", "mp4",

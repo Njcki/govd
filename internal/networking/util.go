@@ -61,7 +61,8 @@ func (client *HTTPClient) FetchWithContext(
 	return resp, nil
 }
 
-// DefaultUserAgent is the shared browser UA for HTTP requests across extractors.
+// DefaultUserAgent is the single shared browser UA for HTTP + yt-dlp across extractors.
+// Keep the Android IG Cookie Export WebView UA identical to this string.
 // Previous values kept for rollback if this UA causes blocks:
 //
 //	Android Chrome 88 (old default):
