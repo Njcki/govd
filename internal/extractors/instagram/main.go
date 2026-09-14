@@ -30,63 +30,42 @@ var Extractor = &models.Extractor{
 		if !HasSessionIDCookie() {
 			return nil, util.ErrInstagramCookies
 		}
-		// method 1: get media from GQL web API (uses real session cookies)
-		media, err1 := GetGQLMedia(ctx)
+		// Prefer media/info first: one authenticated call covers photos, videos,
+		// and mixed carousels. Avoids burning the session on a multi-method waterfall.
+		media, err1 := GetMediaInfoMedia(ctx)
 		if err1 == nil && mediaHasItems(media) {
-			return &models.ExtractorResponse{
-				Media: media,
-			}, nil
+			return &models.ExtractorResponse{Media: media}, nil
 		}
 		if err1 == nil {
-			err1 = fmt.Errorf("graphql returned no media items")
+			err1 = fmt.Errorf("media info returned no media items")
 		}
-		// method 2: authenticated /api/v1/media/{id}/info/ (photos + mixed carousels)
-		media, err2 := GetMediaInfoMedia(ctx)
-		if err2 == nil && mediaHasItems(media) {
-			return &models.ExtractorResponse{
-				Media: media,
-			}, nil
-		}
-		if err2 == nil {
-			err2 = fmt.Errorf("media info returned no media items")
-		}
-		// Stop early on auth failure: further cookieed fallbacks (yt-dlp) burn the session.
-		if isInstagramAuthFailure(err1) || isInstagramAuthFailure(err2) {
+		if isInstagramAuthFailure(err1) {
 			return nil, util.ErrInstagramCookies
 		}
-		// method 3: yt-dlp fallback (videos; photos often unsupported)
-		media, err3 := GetYTDLPMedia(ctx)
+
+		// GraphQL web API as secondary authenticated path.
+		media, err2 := GetGQLMedia(ctx)
+		if err2 == nil && mediaHasItems(media) {
+			return &models.ExtractorResponse{Media: media}, nil
+		}
+		if err2 == nil {
+			err2 = fmt.Errorf("graphql returned no media items")
+		}
+		if isInstagramAuthFailure(err2) {
+			return nil, util.ErrInstagramCookies
+		}
+
+		// Cookie-free embed last resort (no further cookieed clients like yt-dlp/iGram).
+		media, err3 := GetEmbedMedia(ctx)
 		if err3 == nil && mediaHasItems(media) {
-			return &models.ExtractorResponse{
-				Media: media,
-			}, nil
+			return &models.ExtractorResponse{Media: media}, nil
 		}
 		if err3 == nil {
-			err3 = fmt.Errorf("yt-dlp returned no media items")
-		}
-		// method 4: get media from embed page (no session cookies required)
-		media, err4 := GetEmbedMedia(ctx)
-		if err4 == nil && mediaHasItems(media) {
-			return &models.ExtractorResponse{
-				Media: media,
-			}, nil
-		}
-		if err4 == nil {
-			err4 = fmt.Errorf("embed returned no media items")
-		}
-		// method 5: get media from 3rd party service (unlikely)
-		media, err5 := GetIGramPost(ctx)
-		if err5 == nil && mediaHasItems(media) {
-			return &models.ExtractorResponse{
-				Media: media,
-			}, nil
-		}
-		if err5 == nil {
-			err5 = fmt.Errorf("igram returned no media items")
+			err3 = fmt.Errorf("embed returned no media items")
 		}
 		return nil, fmt.Errorf(
-			"all methods failed (no extractable media): gql=%v; media_info=%v; yt-dlp=%v; embed=%v; igram=%v",
-			err1, err2, err3, err4, err5,
+			"all methods failed (no extractable media): media_info=%v; gql=%v; embed=%v",
+			err1, err2, err3,
 		)
 	},
 }
@@ -111,16 +90,16 @@ var StoriesExtractor = &models.Extractor{
 		if err1 == nil {
 			err1 = fmt.Errorf("media info returned no media items")
 		}
-		// Fallback: third-party iGram (may fail when their build signature expires).
+		if isInstagramAuthFailure(err1) {
+			return nil, util.ErrInstagramCookies
+		}
+		// Last resort without our session cookies (iGram signature often expires).
 		media, err2 := GetIGramStory(ctx)
 		if err2 == nil && mediaHasItems(media) {
 			return &models.ExtractorResponse{Media: media}, nil
 		}
 		if err2 == nil {
 			err2 = fmt.Errorf("igram returned no media items")
-		}
-		if isInstagramAuthFailure(err1) {
-			return nil, util.ErrInstagramCookies
 		}
 		return nil, fmt.Errorf("story methods failed: media_info=%v; igram=%v", err1, err2)
 	},

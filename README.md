@@ -45,7 +45,7 @@ this fork is based on [govdbot/govd](https://github.com/govdbot/govd). general s
 
 * **max video quality** in `/settings` — Best / 2160p / 1080p / 720p / 480p (default Best = no cap). applies to every extractor that exposes multiple video formats. already-cached downloads keep their previous quality until you re-download or clear the media cache.
 * **captions** setting is available in private chats as well as groups.
-* **instagram** uses real session cookies from `private/cookies/` (never commit them). fallback chain after GraphQL: authenticated **media info API** (photos + mixed carousels) → **yt-dlp** → embed → iGram. clearer `ErrorInstagramCookies` when `sessionid` is missing/expired.
+* **instagram** uses real session cookies from `private/cookies/` (never commit them). primary path is authenticated **media info API** (photos + videos + mixed carousels); then GraphQL; then cookie-free embed. clearer `ErrorInstagramCookies` when `sessionid` is missing/expired.
 * **youtube** tries configured Invidious instances first, then falls back to **yt-dlp** (optional `private/cookies/youtube.txt`).
 * **inline mode** shows a localized **source** button on the processing placeholder (useful when BotFather Inline Feedback is off and the placeholder never updates).
 
@@ -82,12 +82,13 @@ instagram cookies must include **`sessionid`** (HttpOnly). without it the bot re
 
 instagram download order in this fork:
 
-1. GraphQL (shared Windows Chrome 152 User-Agent + matching client hints)
-2. media info API `/api/v1/media/{id}/info/` with cookies — maps photo / video / carousel (including mixed albums); same shared User-Agent
-3. yt-dlp with the same cookie file (video-oriented; its own UA)
-4. embed / iGram last-resort paths
+1. media info API `/api/v1/media/{id}/info/` with cookies — primary path for photo / video / carousel (including mixed albums); shared Windows Chrome 152 User-Agent
+2. GraphQL (same cookies + client hints) if media info fails without an auth error
+3. embed page as cookie-free last resort
 
-HTTP User-Agent is centralized as `networking.DefaultUserAgent` (Windows Chrome 152). previous Android/Mac/Chrome 124 strings are kept in comments next to that constant for rollback.
+yt-dlp / iGram are no longer in the post waterfall (they burned sessions and rarely helped once media info + GraphQL failed). Stories still try media info first, then iGram without our session cookies.
+
+HTTP User-Agent is centralized as `networking.DefaultUserAgent` (Windows Chrome 152), including yt-dlp when used elsewhere. previous Android/Mac/Chrome 124 strings are kept in comments next to that constant for rollback.
 
 prefer a **dedicated secondary** Instagram account for the VPS. reusing a primary account from a datacenter IP can trigger Meta automation checkpoints.
 
