@@ -287,6 +287,7 @@ func GetCDNURL(contentURL string) (string, error) {
 }
 
 func GetGQLData(ctx *models.ExtractorContext) (*GraphQLData, error) {
+	throttleInstagramAPI()
 	graphHeaders, body, err := BuildGQLData(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build GQL data: %w", err)

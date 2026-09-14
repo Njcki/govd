@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/govdbot/govd/internal/database"
@@ -15,6 +17,23 @@ import (
 	"github.com/govdbot/govd/internal/networking"
 	"github.com/govdbot/govd/internal/util"
 )
+
+var (
+	igAPIMu   sync.Mutex
+	igAPILast time.Time
+)
+
+// throttleInstagramAPI spaces authenticated Instagram API calls to reduce
+// datacenter-session friction. CDN media downloads are unaffected.
+func throttleInstagramAPI() {
+	const minInterval = 750 * time.Millisecond
+	igAPIMu.Lock()
+	defer igAPIMu.Unlock()
+	if wait := minInterval - time.Since(igAPILast); wait > 0 {
+		time.Sleep(wait)
+	}
+	igAPILast = time.Now()
+}
 
 const (
 	mediaInfoEndpoint = "https://www.instagram.com/api/v1/media/%s/info/"
@@ -70,6 +89,7 @@ func resolveMediaInfoID(contentID string) (string, error) {
 // GetMediaInfoMedia fetches post media via Instagram's authenticated
 // /api/v1/media/{id}/info/ endpoint. Works for photos, videos, and mixed carousels.
 func GetMediaInfoMedia(ctx *models.ExtractorContext) (*models.Media, error) {
+	throttleInstagramAPI()
 	mediaID, err := resolveMediaInfoID(ctx.ContentID)
 	if err != nil {
 		return nil, err

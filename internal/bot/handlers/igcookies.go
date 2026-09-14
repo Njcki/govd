@@ -320,7 +320,7 @@ type igSessionProbe struct {
 	ProbeError   string
 }
 
-// probeIGSession returns a cached liveness check (30m) to avoid hammering Instagram.
+// probeIGSession returns a cached liveness check (2h) to avoid hammering Instagram.
 func probeIGSession() igSessionProbe {
 	return probeIGSessionCached(false)
 }
