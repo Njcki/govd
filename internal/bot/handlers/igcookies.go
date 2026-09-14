@@ -15,6 +15,7 @@ import (
 	"github.com/PaulSonOfLars/gotgbot/v2/ext"
 	"github.com/PaulSonOfLars/gotgbot/v2/ext/handlers/filters/message"
 	"github.com/govdbot/govd/internal/logger"
+	"github.com/govdbot/govd/internal/networking"
 	"github.com/govdbot/govd/internal/util"
 )
 
@@ -306,13 +307,95 @@ func refreshIGCookiesPanel(bot *gotgbot.Bot, ctx *ext.Context) {
 	}
 }
 
-func buildIGCookiesStatusText() string {
-	cookieExists := fileExists(igCookiePath)
-	hasSessionID := false
-	if cookieExists {
-		hasSessionID = cookieFileHasSessionID(igCookiePath)
+type igSessionProbe struct {
+	FilePresent  bool
+	HasSessionID bool
+	Alive        bool
+	Detail       string
+	ProbeError   string
+}
+
+// probeIGSession checks whether Instagram still accepts the stored session
+// (not just whether the sessionid cookie name is present).
+func probeIGSession() igSessionProbe {
+	st := igSessionProbe{FilePresent: fileExists(igCookiePath)}
+	if !st.FilePresent {
+		st.Detail = "file assente"
+		return st
 	}
+	st.HasSessionID = cookieFileHasSessionID(igCookiePath)
+	if !st.HasSessionID {
+		st.Detail = "manca sessionid"
+		return st
+	}
+
+	util.InvalidateCookieCache(igCookieFileName)
+	cookies := util.ParseCookieFile(igCookieFileName)
+	if len(cookies) == 0 {
+		st.Detail = "file non leggibile"
+		return st
+	}
+
+	// Any media id works: dead sessions redirect to login; live ones return JSON.
+	const probeURL = "https://www.instagram.com/api/v1/media/1/info/"
+	req, err := http.NewRequest(http.MethodGet, probeURL, nil)
+	if err != nil {
+		st.ProbeError = "richiesta"
+		return st
+	}
+	req.Header.Set("User-Agent", networking.DefaultUserAgent)
+	req.Header.Set("Accept", "*/*")
+	req.Header.Set("x-ig-app-id", "936619743392459")
+	req.Header.Set("x-asbd-id", "129477")
+	req.Header.Set("x-requested-with", "XMLHttpRequest")
+	req.Header.Set("Referer", "https://www.instagram.com/")
+	for _, c := range cookies {
+		if c == nil || c.Name == "" {
+			continue
+		}
+		req.AddCookie(c)
+		if c.Name == "csrftoken" && c.Value != "" {
+			req.Header.Set("X-CSRFToken", c.Value)
+		}
+	}
+
+	client := &http.Client{
+		Timeout: 12 * time.Second,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		st.ProbeError = "rete"
+		logger.L.Warnf("ig session probe failed: %v", err)
+		return st
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	ct := strings.ToLower(resp.Header.Get("Content-Type"))
+	loc := resp.Header.Get("Location")
+	lowerBody := strings.ToLower(string(body))
+
+	switch {
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		st.Detail = "HTTP " + resp.Status
+	case resp.StatusCode >= 300 && resp.StatusCode < 400 && strings.Contains(strings.ToLower(loc), "login"):
+		st.Detail = "redirect a login"
+	case strings.Contains(lowerBody, "accounts/login") || strings.Contains(ct, "text/html"):
+		st.Detail = "risposta login/html"
+	case resp.StatusCode == http.StatusOK && (strings.Contains(ct, "json") || strings.HasPrefix(strings.TrimSpace(string(body)), "{")):
+		st.Alive = true
+		st.Detail = "ok"
+	default:
+		st.Detail = fmt.Sprintf("HTTP %d", resp.StatusCode)
+	}
+	return st
+}
+
+func buildIGCookiesStatusText() string {
 	credsExist := fileExists(igCredentialsPath)
+	st := probeIGSession()
 
 	yesNo := func(v bool) string {
 		if v {
@@ -321,19 +404,39 @@ func buildIGCookiesStatusText() string {
 		return "no"
 	}
 
+	sessionLine := "Sessione Instagram: <b>no</b>"
+	switch {
+	case !st.FilePresent:
+		sessionLine = "Sessione Instagram: <b>no</b> (file assente)"
+	case !st.HasSessionID:
+		sessionLine = "Sessione Instagram: <b>no</b> (manca sessionid)"
+	case st.Alive:
+		sessionLine = "Sessione Instagram: <b>sì</b> (accettata da Instagram)"
+	case st.ProbeError != "":
+		sessionLine = "Sessione Instagram: <b>non verificabile</b> (" + htmlEscape(st.ProbeError) + ")"
+	default:
+		sessionLine = "Sessione Instagram: <b>no</b> (" + htmlEscape(st.Detail) + ")"
+	}
+
 	return fmt.Sprintf(
 		"<b>Cookie / credenziali Instagram</b>\n\n"+
 			"File cookie (<code>%s</code>): <b>%s</b>\n"+
-			"Contiene <code>sessionid</code>: <b>%s</b>\n"+
+			"%s\n"+
+			"sessionid nel file: <b>%s</b>\n"+
 			"File credenziali: <b>%s</b>\n\n"+
-			"<i>Nota:</i> <code>sessionid: sì</code> significa solo che il nome c’è nel file, non che Instagram accetti ancora la sessione.\n\n"+
 			"Puoi inviarmi i cookie come <b>testo incollato</b> (consigliato) o come documento <code>instagram.txt</code>.\n\n"+
 			"<i>Solo storage locale. Nessun login automatico Instagram.</i>",
 		igCookiePath,
-		yesNo(cookieExists),
-		yesNo(hasSessionID),
+		yesNo(st.FilePresent),
+		sessionLine,
+		yesNo(st.HasSessionID),
 		yesNo(credsExist),
 	)
+}
+
+func htmlEscape(s string) string {
+	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", "\"", "&quot;")
+	return r.Replace(s)
 }
 
 func igCookiesKeyboard() gotgbot.InlineKeyboardMarkup {
@@ -426,16 +529,32 @@ func installIGCookieContent(content string) error {
 }
 
 func confirmIGCookiesInstalled(bot *gotgbot.Bot, chatID int64) {
-	hasSession := cookieFileHasSessionID(igCookiePath)
-	sessionLabel := "no"
-	if hasSession {
-		sessionLabel = "sì"
+	st := probeIGSession()
+	var text string
+	switch {
+	case st.Alive:
+		text = "✅ Cookie Instagram caricati e <b>sessione valida</b>.\n" +
+			"File: <code>" + igCookiePath + "</code>\n" +
+			"Cache ricaricata: il bot userà subito i nuovi cookie.\n" +
+			"Messaggio cookie eliminato dalla chat."
+	case !st.HasSessionID:
+		text = "⚠️ Cookie scritti ma <b>manca sessionid</b>.\n" +
+			"File: <code>" + igCookiePath + "</code>\n" +
+			"Riesporta dopo un login completo e reinviameli.\n" +
+			"Messaggio cookie eliminato dalla chat."
+	case st.ProbeError != "":
+		text = "⚠️ Cookie scritti ma non riesco a verificare la sessione (" + htmlEscape(st.ProbeError) + ").\n" +
+			"File: <code>" + igCookiePath + "</code>\n" +
+			"sessionid nel file: sì — riprova un download o /igcookies → Stato.\n" +
+			"Messaggio cookie eliminato dalla chat."
+	default:
+		text = "⚠️ Cookie scritti ma Instagram <b>non accetta</b> la sessione.\n" +
+			"Motivo: " + htmlEscape(st.Detail) + "\n" +
+			"File: <code>" + igCookiePath + "</code>\n" +
+			"sessionid nel file: sì, ma la sessione è morta/checkpoint.\n" +
+			"Rifai login nell’app, esporta di nuovo e invia come testo.\n" +
+			"Messaggio cookie eliminato dalla chat."
 	}
-	text := "✅ Cookie Instagram caricati correttamente.\n" +
-		"File: <code>" + igCookiePath + "</code>\n" +
-		"sessionid: <b>" + sessionLabel + "</b>\n" +
-		"Cache ricaricata: il bot userà subito i nuovi cookie.\n" +
-		"Messaggio cookie eliminato dalla chat."
 	_, err := bot.SendMessage(chatID, text, &gotgbot.SendMessageOpts{
 		ParseMode: gotgbot.ParseModeHTML,
 	})
