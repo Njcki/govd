@@ -377,16 +377,23 @@ func probeIGSession() igSessionProbe {
 	loc := resp.Header.Get("Location")
 	lowerBody := strings.ToLower(string(body))
 
+	isJSON := strings.Contains(ct, "json") || strings.HasPrefix(strings.TrimSpace(string(body)), "{")
 	switch {
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		st.Detail = "HTTP " + resp.Status
 	case resp.StatusCode >= 300 && resp.StatusCode < 400 && strings.Contains(strings.ToLower(loc), "login"):
 		st.Detail = "redirect a login"
-	case strings.Contains(lowerBody, "accounts/login") || strings.Contains(ct, "text/html"):
+	case strings.Contains(lowerBody, "accounts/login") && strings.Contains(ct, "text/html"):
 		st.Detail = "risposta login/html"
-	case resp.StatusCode == http.StatusOK && (strings.Contains(ct, "json") || strings.HasPrefix(strings.TrimSpace(string(body)), "{")):
+	case strings.Contains(lowerBody, "login_required"):
+		st.Detail = "login_required"
+	case isJSON:
+		// Authenticated API responses are JSON even for "media not found" / status=fail.
+		// Only treat login_required above as dead.
 		st.Alive = true
 		st.Detail = "ok"
+	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
+		st.Detail = "HTTP " + resp.Status
+	case strings.Contains(ct, "text/html"):
+		st.Detail = "risposta html"
 	default:
 		st.Detail = fmt.Sprintf("HTTP %d", resp.StatusCode)
 	}
@@ -498,6 +505,35 @@ func normalizeNetscapeExpiry(content string) string {
 	return strings.Join(lines, "\n")
 }
 
+// sanitizeNetscapeCookieValues strips bytes Go's net/http refuses in Cookie.Value
+// (backslash etc.), which otherwise get dropped and can break Instagram cookies.
+func sanitizeNetscapeCookieValues(content string) string {
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		trim := strings.TrimSpace(line)
+		if trim == "" || strings.HasPrefix(trim, "#") {
+			continue
+		}
+		parts := strings.Split(line, "\t")
+		if len(parts) < 7 {
+			continue
+		}
+		parts[6] = strings.Map(func(r rune) rune {
+			switch r {
+			case '\\', '"', ',', ';', ' ', '\t', '\r', '\n':
+				return -1
+			default:
+				if r < 0x20 {
+					return -1
+				}
+				return r
+			}
+		}, parts[6])
+		lines[i] = strings.Join(parts, "\t")
+	}
+	return strings.Join(lines, "\n")
+}
+
 func installIGCookieContent(content string) error {
 	content = strings.TrimSpace(content)
 	if content == "" {
@@ -510,6 +546,7 @@ func installIGCookieContent(content string) error {
 		return fmt.Errorf("manca sessionid nel file")
 	}
 	content = normalizeNetscapeExpiry(content)
+	content = sanitizeNetscapeCookieValues(content)
 	if err := os.MkdirAll(filepath.Dir(igCookiePath), 0o700); err != nil {
 		return fmt.Errorf("mkdir: %w", err)
 	}
@@ -551,7 +588,7 @@ func confirmIGCookiesInstalled(bot *gotgbot.Bot, chatID int64) {
 		text = "⚠️ Cookie scritti ma Instagram <b>non accetta</b> la sessione.\n" +
 			"Motivo: " + htmlEscape(st.Detail) + "\n" +
 			"File: <code>" + igCookiePath + "</code>\n" +
-			"sessionid nel file: sì, ma la sessione è morta/checkpoint.\n" +
+			"sessionid nel file: sì, ma Instagram non ha accettato la sessione.\n" +
 			"Rifai login nell’app, esporta di nuovo e invia come testo.\n" +
 			"Messaggio cookie eliminato dalla chat."
 	}
