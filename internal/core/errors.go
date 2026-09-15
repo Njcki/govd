@@ -24,6 +24,13 @@ func HandleError(
 ) {
 	chat := extractorCtx.Chat
 	localizer := localization.New(chat.Language)
+	sourceURL := ""
+	if extractorCtx != nil {
+		sourceURL = extractorCtx.ContentURL
+	}
+	sourceButton := localizer.T(&i18n.LocalizeConfig{
+		MessageID: localization.SourceButton.ID,
+	})
 
 	botError := asBotError(err)
 	if botError != nil {
@@ -32,6 +39,7 @@ func HandleError(
 			localizer.T(&i18n.LocalizeConfig{
 				MessageID: botError.ID,
 			}),
+			sourceURL, sourceButton,
 		)
 		if shouldNotifyAdmins(botError.ID) {
 			notifyAdmins(b, formatAdminErrorAlert(ctx, extractorCtx, botError.ID, err, ""))
@@ -51,6 +59,7 @@ func HandleError(
 			localizer.T(&i18n.LocalizeConfig{
 				MessageID: localization.ErrorPermissionDenied.ID,
 			}),
+			sourceURL, sourceButton,
 		)
 		return
 	}
@@ -64,6 +73,7 @@ func HandleError(
 		localizer.T(&i18n.LocalizeConfig{
 			MessageID: localization.ErrorMessage.ID,
 		}),
+		sourceURL, sourceButton,
 	)
 
 	database.Q().LogError(
@@ -191,18 +201,53 @@ func formatErrorMessage(ctx *ext.Context, message string, errorID string) string
 	return "⚠️ " + message + suffix
 }
 
+func sourceErrorMarkup(sourceURL, sourceButton string) *gotgbot.InlineKeyboardMarkup {
+	if sourceURL == "" || sourceButton == "" {
+		return nil
+	}
+	return &gotgbot.InlineKeyboardMarkup{
+		InlineKeyboard: [][]gotgbot.InlineKeyboardButton{{
+			{Text: sourceButton, Url: sourceURL},
+		}},
+	}
+}
+
 func sendErrorMessage(
 	b *gotgbot.Bot,
 	ctx *ext.Context,
-	errroID string,
+	errorID string,
 	message string,
+	sourceURL string,
+	sourceButton string,
 ) {
-	message = formatErrorMessage(ctx, message, errroID)
+	message = formatErrorMessage(ctx, message, errorID)
+	markup := sourceErrorMarkup(sourceURL, sourceButton)
 
 	switch {
 	case ctx.Message != nil:
-		ctx.EffectiveMessage.Reply(b, message, nil)
+		opts := &gotgbot.SendMessageOpts{
+			ParseMode: gotgbot.ParseModeHTML,
+			LinkPreviewOptions: &gotgbot.LinkPreviewOptions{
+				IsDisabled: true,
+			},
+		}
+		if markup != nil {
+			opts.ReplyMarkup = *markup
+		}
+		ctx.EffectiveMessage.Reply(b, message, opts)
 	case ctx.CallbackQuery != nil:
+		if markup != nil && ctx.EffectiveChat != nil {
+			// Alerts cannot carry URL buttons — send a chat message with the source link.
+			_, _ = ctx.CallbackQuery.Answer(b, &gotgbot.AnswerCallbackQueryOpts{})
+			_, _ = b.SendMessage(ctx.EffectiveChat.Id, message, &gotgbot.SendMessageOpts{
+				ParseMode:   gotgbot.ParseModeHTML,
+				ReplyMarkup: *markup,
+				LinkPreviewOptions: &gotgbot.LinkPreviewOptions{
+					IsDisabled: true,
+				},
+			})
+			break
+		}
 		ctx.CallbackQuery.Answer(b, &gotgbot.AnswerCallbackQueryOpts{
 			Text:      message,
 			ShowAlert: true,
@@ -218,14 +263,16 @@ func sendErrorMessage(
 			},
 		)
 	case ctx.ChosenInlineResult != nil:
-		b.EditMessageText(
-			message,
-			&gotgbot.EditMessageTextOpts{
-				InlineMessageId: ctx.ChosenInlineResult.InlineMessageId,
-				LinkPreviewOptions: &gotgbot.LinkPreviewOptions{
-					IsDisabled: true,
-				},
+		editOpts := &gotgbot.EditMessageTextOpts{
+			InlineMessageId: ctx.ChosenInlineResult.InlineMessageId,
+			ParseMode:       gotgbot.ParseModeHTML,
+			LinkPreviewOptions: &gotgbot.LinkPreviewOptions{
+				IsDisabled: true,
 			},
-		)
+		}
+		if markup != nil {
+			editOpts.ReplyMarkup = *markup
+		}
+		b.EditMessageText(message, editOpts)
 	}
 }
