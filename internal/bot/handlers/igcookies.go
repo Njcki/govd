@@ -511,6 +511,33 @@ func ingestIGCookieMessage(bot *gotgbot.Bot, msg *gotgbot.Message) error {
 	return errNotIGCookieMessage
 }
 
+// normalizeNetscapeTabs rewrites space-separated Netscape lines to tab-separated
+// fields. The Android IG Cookie Export app often emits spaces; nscjar only splits
+// on tabs, so space-separated jars fail with "cookie name is not valid".
+func normalizeNetscapeTabs(content string) string {
+	lines := strings.Split(content, "\n")
+	for i, line := range lines {
+		trim := strings.TrimSpace(line)
+		if trim == "" || strings.HasPrefix(trim, "#") {
+			continue
+		}
+		if strings.Contains(line, "\t") {
+			parts := strings.Split(line, "\t")
+			if len(parts) >= 7 {
+				continue
+			}
+		}
+		fields := strings.Fields(line)
+		if len(fields) < 7 {
+			continue
+		}
+		domain, flag, path, secure, expiry, name := fields[0], fields[1], fields[2], fields[3], fields[4], fields[5]
+		value := strings.Join(fields[6:], " ")
+		lines[i] = strings.Join([]string{domain, flag, path, secure, expiry, name, value}, "\t")
+	}
+	return strings.Join(lines, "\n")
+}
+
 // normalizeNetscapeExpiry rewrites expiration 0 (session) to +1y.
 // Android WebView exports often omit real expiry; some clients drop exp=0 cookies.
 func normalizeNetscapeExpiry(content string) string {
@@ -573,6 +600,7 @@ func installIGCookieContent(content string) error {
 	if !netscapeHasSessionID(content) {
 		return fmt.Errorf("manca sessionid nel file")
 	}
+	content = normalizeNetscapeTabs(content)
 	content = normalizeNetscapeExpiry(content)
 	content = sanitizeNetscapeCookieValues(content)
 	if err := os.MkdirAll(filepath.Dir(igCookiePath), 0o700); err != nil {
