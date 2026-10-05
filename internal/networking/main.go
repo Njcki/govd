@@ -10,6 +10,10 @@ import (
 
 var defaultTimeout = 30 * time.Second
 
+// downloadTimeout covers the full response body for media fetches.
+// 30s is enough for API JSON but too short for large X/IG videos from the VPS.
+var downloadTimeout = 5 * time.Minute
+
 func NewHTTPClient(options *NewHTTPClientOptions) *HTTPClient {
 	if options == nil {
 		options = &NewHTTPClientOptions{}
@@ -65,6 +69,8 @@ func (c *HTTPClient) AsDownloadClient() *HTTPClient {
 		Headers: c.Headers,
 		Cookies: c.Cookies,
 	})
+	// Always allow slow media bodies; API clients keep defaultTimeout.
+	client.Client.Timeout = downloadTimeout
 	if c.DownloadProxy != "" {
 		proxyURL, err := url.Parse(c.DownloadProxy)
 		if err != nil {
@@ -73,13 +79,13 @@ func (c *HTTPClient) AsDownloadClient() *HTTPClient {
 		}
 		client.Client = &http.Client{
 			Transport: NewTransportWithProxy(proxyURL),
-			Timeout:   defaultTimeout,
+			Timeout:   downloadTimeout,
 		}
 		client.DownloadProxy = c.DownloadProxy
 	} else if c.DisableProxy {
 		client.Client = &http.Client{
 			Transport: NewTransportNoProxyFromEnv(),
-			Timeout:   defaultTimeout,
+			Timeout:   downloadTimeout,
 		}
 		client.DisableProxy = true
 	}
