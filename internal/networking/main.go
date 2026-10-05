@@ -65,12 +65,15 @@ func DefaultHTTPClient(options *NewHTTPClientOptions) *HTTPClient {
 }
 
 func (c *HTTPClient) AsDownloadClient() *HTTPClient {
-	client := DefaultHTTPClient(&NewHTTPClientOptions{
+	// Always allow slow media bodies; API clients keep defaultTimeout.
+	client := &HTTPClient{
+		Client: &http.Client{
+			Transport: NewTransport(),
+			Timeout:   downloadTimeout,
+		},
 		Headers: c.Headers,
 		Cookies: c.Cookies,
-	})
-	// Always allow slow media bodies; API clients keep defaultTimeout.
-	client.Client.Timeout = downloadTimeout
+	}
 	if c.DownloadProxy != "" {
 		proxyURL, err := url.Parse(c.DownloadProxy)
 		if err != nil {
