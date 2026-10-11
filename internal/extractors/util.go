@@ -13,12 +13,19 @@ import (
 
 const maxRedirects = 5
 
+// taskTimeout bounds a whole task (extraction, download, remux,
+// thumbnail and caching). large videos can take several minutes
+// just to download and remux, so this must be generous: with the
+// previous 5 minute value the context expired before the thumbnail
+// request, which then failed instantly.
+const taskTimeout = 30 * time.Minute
+
 var extractorsByHost = getExtractorsMap()
 
 func FromURL(url string) *models.ExtractorContext {
 	ctx, cancel := context.WithTimeout(
 		context.Background(),
-		5*time.Minute,
+		taskTimeout,
 	)
 
 	var redirectCount int

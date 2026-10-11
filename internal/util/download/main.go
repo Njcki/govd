@@ -159,6 +159,7 @@ func DownloadFileInMemory(
 	client := ctx.HTTPClient.AsDownloadClient()
 	maxRetries := max(settings.Retries, 1)
 
+	var lastErr error
 	for _, url := range urlList {
 		for attempt := range maxRetries {
 			ctx.Debugf("attempting download from: %s (attempt %d/%d)", url, attempt+1, maxRetries)
@@ -171,17 +172,24 @@ func DownloadFileInMemory(
 				},
 			)
 			if err != nil {
+				lastErr = err
+				if ctx.Context.Err() != nil {
+					// context expired or cancelled: retrying is pointless
+					return nil, fmt.Errorf("all download attempts failed: %w", err)
+				}
 				continue
 			}
 
 			if resp.StatusCode != http.StatusOK {
 				resp.Body.Close()
+				lastErr = fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 				continue
 			}
 
 			data, err := io.ReadAll(resp.Body)
 			if err != nil {
 				resp.Body.Close()
+				lastErr = err
 				continue
 			}
 
@@ -190,6 +198,9 @@ func DownloadFileInMemory(
 		}
 	}
 
+	if lastErr != nil {
+		return nil, fmt.Errorf("all download attempts failed: %w", lastErr)
+	}
 	return nil, fmt.Errorf("all download attempts failed")
 }
 

@@ -120,7 +120,9 @@ func SendFormats(
 			formats,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to cache formats: %w", err)
+			// media was already sent: a caching failure must not
+			// be reported to the user as a failed download
+			extractorCtx.Warnf("failed to cache formats: %v", err)
 		}
 	}
 	return sentMessages, nil

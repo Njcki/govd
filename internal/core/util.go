@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -34,11 +35,16 @@ func parseFormatFromDB(row *database.GetMediaFormatRow) *models.MediaFormat {
 	}
 }
 
+// getThumbnail returns the path of a thumbnail for the downloaded file.
+// thumbnail failures are never fatal: if the remote thumbnail can't be
+// downloaded or converted, videos fall back to a frame extracted with
+// ffmpeg, and if that fails too an empty path is returned so the media
+// is sent without a custom thumbnail.
 func getThumbnail(
 	ctx *models.ExtractorContext,
 	format *models.MediaFormat,
 	filePath string,
-) (string, error) {
+) string {
 	fileDir := filepath.Dir(filePath)
 	fileName := filepath.Base(filePath)
 	fileExt := filepath.Ext(fileName)
@@ -47,33 +53,54 @@ func getThumbnail(
 	ctx.FilesTracker.Add(thumbnailFilePath)
 
 	if len(format.ThumbnailURL) > 0 {
-		file, err := download.DownloadFileInMemory(
-			ctx, format.ThumbnailURL,
-			format.DownloadSettings,
-		)
-		if err != nil {
-			return "", err
+		err := downloadThumbnail(ctx, format, thumbnailFilePath)
+		if err == nil {
+			return thumbnailFilePath
 		}
-		if file == nil {
-			return "", fmt.Errorf("downloaded file is nil")
-		}
-
-		var size int
-		if format.Type == database.MediaTypeAudio {
-			// for audio, use a smaller thumbnail
-			size = 320
-		}
-		bounds, err := util.ImgToJPEG(file, thumbnailFilePath, size)
-		if err != nil {
-			return "", err
-		}
-		format.Width = bounds.W
-		format.Height = bounds.H
-	} else if format.Type == database.MediaTypeVideo {
-		return libav.ExtractVideoThumbnail(filePath, thumbnailFilePath)
+		ctx.Warnf("failed to download thumbnail, falling back: %v", err)
+		os.Remove(thumbnailFilePath)
 	}
 
-	return thumbnailFilePath, nil
+	if format.Type != database.MediaTypeVideo {
+		return ""
+	}
+
+	path, err := libav.ExtractVideoThumbnail(filePath, thumbnailFilePath)
+	if err != nil {
+		ctx.Warnf("failed to extract thumbnail from video, sending without thumbnail: %v", err)
+		return ""
+	}
+	return path
+}
+
+func downloadThumbnail(
+	ctx *models.ExtractorContext,
+	format *models.MediaFormat,
+	thumbnailFilePath string,
+) error {
+	file, err := download.DownloadFileInMemory(
+		ctx, format.ThumbnailURL,
+		format.DownloadSettings,
+	)
+	if err != nil {
+		return err
+	}
+	if file == nil {
+		return fmt.Errorf("downloaded file is nil")
+	}
+
+	var size int
+	if format.Type == database.MediaTypeAudio {
+		// for audio, use a smaller thumbnail
+		size = 320
+	}
+	bounds, err := util.ImgToJPEG(file, thumbnailFilePath, size)
+	if err != nil {
+		return err
+	}
+	format.Width = bounds.W
+	format.Height = bounds.H
+	return nil
 }
 
 func insertVideoInfo(format *models.MediaFormat, filePath string) {

@@ -143,10 +143,7 @@ func downloadFormat(
 	if strings.HasPrefix(format.URL[0], "file://") {
 		filePath := strings.TrimPrefix(format.URL[0], "file://")
 		ctx.FilesTracker.Add(filePath)
-		thumbnailFilePath, err := getThumbnail(ctx, format, filePath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get thumbnail: %w", err)
-		}
+		thumbnailFilePath := getThumbnail(ctx, format, filePath)
 		if format.MissingMetadata() {
 			insertVideoInfo(format, filePath)
 		}
@@ -212,10 +209,7 @@ func downloadFormat(
 		return nil, fmt.Errorf("failed to download file: %w", err)
 	}
 
-	thumbnailFilePath, err = getThumbnail(ctx, format, filePath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get thumbnail: %w", err)
-	}
+	thumbnailFilePath = getThumbnail(ctx, format, filePath)
 
 	if format.MissingMetadata() {
 		// extract video metadata if missing
