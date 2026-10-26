@@ -1,12 +1,14 @@
 package chunked
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"maps"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/govdbot/govd/internal/models"
 	"github.com/govdbot/govd/internal/networking"
@@ -161,6 +163,15 @@ func (cd *ChunkedDownloader) downloadChunk(
 	var lastErr error
 
 	for attempt := range maxRetries {
+		if attempt > 0 {
+			select {
+			case <-ctx.Context.Done():
+				chunks <- &Chunk{index: index, err: ctx.Context.Err()}
+				return
+			case <-time.After(time.Duration(attempt) * time.Second):
+			}
+		}
+
 		resp, err := cd.client.FetchWithContext(
 			ctx.Context,
 			http.MethodGet,
@@ -180,7 +191,17 @@ func (cd *ChunkedDownloader) downloadChunk(
 			continue
 		}
 
-		chunks <- &Chunk{index: index, reader: resp.Body}
+		// read the whole range now so body-stream PROTOCOL_ERROR
+		// (common on HTTP/2 mid-transfer) is retried for this chunk
+		// instead of failing later in writeChunks
+		data, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("failed to read chunk %d (attempt %d/%d): %w", index, attempt+1, maxRetries, err)
+			continue
+		}
+
+		chunks <- &Chunk{index: index, reader: io.NopCloser(bytes.NewReader(data))}
 		return
 	}
 

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/govdbot/govd/internal/models"
@@ -41,44 +42,88 @@ func DownloadFile(
 	defer file.Close()
 
 	var lastErr error
+	maxAttempts := max(settings.Retries, 1)
 	for _, url := range urlList {
-		ctx.Debugf("attempting download from: %s", url)
+		for attempt := range maxAttempts {
+			if attempt > 0 {
+				backoff := time.Duration(attempt) * time.Second
+				ctx.Warnf("retrying download from %s (attempt %d/%d) after %s: %v",
+					url, attempt+1, maxAttempts, backoff, lastErr)
+				select {
+				case <-ctx.Context.Done():
+					return "", ctx.Context.Err()
+				case <-time.After(backoff):
+				}
+			} else {
+				ctx.Debugf("attempting download from: %s", url)
+			}
 
-		cd, err := chunked.New(ctx.Context, client, url, settings)
-		if err != nil {
-			// ranged requests not supported, fallback to sequential download
-			err = downloadSequential(ctx, client, url, file, settings)
+			if err := file.Truncate(0); err != nil {
+				return "", err
+			}
+			if _, err := file.Seek(0, 0); err != nil {
+				return "", err
+			}
+
+			cd, err := chunked.New(ctx.Context, client, url, settings)
+			if err != nil {
+				// ranged requests not supported, fallback to sequential download
+				err = downloadSequential(ctx, client, url, file, settings)
+			} else {
+				err = cd.Download(ctx, file, settings.NumConnections)
+			}
 			if err != nil {
 				lastErr = err
-				continue
+				if isTransientDownloadError(err) && attempt+1 < maxAttempts {
+					continue
+				}
+				break // try next URL
 			}
-		} else {
-			err = cd.Download(ctx, file, settings.NumConnections)
+
+			outputPath := strings.TrimSuffix(
+				filePath,
+				filepath.Ext(filePath),
+			) + "_remuxed" + filepath.Ext(filePath)
+			ctx.FilesTracker.Add(outputPath)
+
+			err = libav.RemuxFile(filePath, outputPath)
 			if err != nil {
-				lastErr = err
-				continue
+				ctx.Warnf("remuxing failed, using original file: %v", err)
+				return filePath, nil
 			}
-		}
 
-		outputPath := strings.TrimSuffix(
-			filePath,
-			filepath.Ext(filePath),
-		) + "_remuxed" + filepath.Ext(filePath)
-		ctx.FilesTracker.Add(outputPath)
+			// replace original file with remuxed file
+			os.Rename(outputPath, filePath)
 
-		err = libav.RemuxFile(filePath, outputPath)
-		if err != nil {
-			ctx.Warnf("remuxing failed, using original file: %v", err)
 			return filePath, nil
 		}
-
-		// replace original file with remuxed file
-		os.Rename(outputPath, filePath)
-
-		return filePath, nil
 	}
 
 	return "", lastErr
+}
+
+// isTransientDownloadError reports whether err is likely caused by a
+// mid-transfer CDN/stream reset (HTTP/2 PROTOCOL_ERROR, connection reset)
+// and worth retrying the same URL.
+func isTransientDownloadError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	for _, needle := range []string{
+		"protocol_error",
+		"stream error",
+		"http2:",
+		"connection reset",
+		"broken pipe",
+		"unexpected eof",
+		"server closed idle connection",
+	} {
+		if strings.Contains(msg, needle) {
+			return true
+		}
+	}
+	return false
 }
 
 func DownloadFileWithSegments(

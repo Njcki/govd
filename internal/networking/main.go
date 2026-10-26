@@ -66,9 +66,11 @@ func DefaultHTTPClient(options *NewHTTPClientOptions) *HTTPClient {
 
 func (c *HTTPClient) AsDownloadClient() *HTTPClient {
 	// Always allow slow media bodies; API clients keep defaultTimeout.
+	// Download path forces HTTP/1.1: parallel ranged GETs over HTTP/2
+	// get PROTOCOL_ERROR resets from Twitter CDN.
 	client := &HTTPClient{
 		Client: &http.Client{
-			Transport: NewTransport(),
+			Transport: NewDownloadTransport(),
 			Timeout:   downloadTimeout,
 		},
 		Headers: c.Headers,
@@ -81,13 +83,13 @@ func (c *HTTPClient) AsDownloadClient() *HTTPClient {
 			return c
 		}
 		client.Client = &http.Client{
-			Transport: NewTransportWithProxy(proxyURL),
+			Transport: NewDownloadTransportWithProxy(proxyURL),
 			Timeout:   downloadTimeout,
 		}
 		client.DownloadProxy = c.DownloadProxy
 	} else if c.DisableProxy {
 		client.Client = &http.Client{
-			Transport: NewTransportNoProxyFromEnv(),
+			Transport: NewDownloadTransportNoProxyFromEnv(),
 			Timeout:   downloadTimeout,
 		}
 		client.DisableProxy = true
