@@ -64,7 +64,10 @@ func downloadItem(
 		if ctx.Chat != nil {
 			maxHeight = ctx.Chat.MaxVideoHeight
 		}
-		format = item.GetDefaultFormat(maxHeight)
+		format = selectVideoFormat(ctx, item, maxHeight)
+		if format == nil {
+			format = item.GetDefaultFormat(maxHeight)
+		}
 	}
 
 	if format == nil {

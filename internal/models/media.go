@@ -196,6 +196,19 @@ func (mi *MediaItem) GetDefaultFormat(maxHeight int32) *MediaFormat {
 }
 
 func (mi *MediaItem) GetDefaultVideoFormat(maxHeight int32) *MediaFormat {
+	candidates := mi.GetVideoFormatCandidates(maxHeight)
+	if len(candidates) == 0 {
+		return nil
+	}
+	return candidates[0]
+}
+
+// GetVideoFormatCandidates returns the video formats eligible for
+// download, ordered by preference (the first one is the default).
+// it respects the per-chat max height: formats above the cap are
+// excluded, and if none fits the cap the lowest-height formats are
+// returned (lowest first).
+func (mi *MediaItem) GetVideoFormatCandidates(maxHeight int32) []*MediaFormat {
 	filtered := mi.FilterFormats(func(format *MediaFormat) bool {
 		return format.VideoCodec == database.MediaCodecAvc
 	})
@@ -228,7 +241,7 @@ func (mi *MediaItem) GetDefaultVideoFormat(maxHeight int32) *MediaFormat {
 			if len(lowest) == 0 {
 				lowest = filtered
 			}
-			slices.SortFunc(lowest, func(a, b *MediaFormat) int {
+			slices.SortStableFunc(lowest, func(a, b *MediaFormat) int {
 				if a.Height < b.Height {
 					return -1
 				} else if a.Height > b.Height {
@@ -242,11 +255,11 @@ func (mi *MediaItem) GetDefaultVideoFormat(maxHeight int32) *MediaFormat {
 				}
 				return 0
 			})
-			return lowest[0]
+			return lowest
 		}
 	}
 
-	slices.SortFunc(filtered, func(a, b *MediaFormat) int {
+	slices.SortStableFunc(filtered, func(a, b *MediaFormat) int {
 		if a.Bitrate != b.Bitrate {
 			if a.Bitrate > b.Bitrate {
 				return -1
@@ -260,8 +273,21 @@ func (mi *MediaItem) GetDefaultVideoFormat(maxHeight int32) *MediaFormat {
 		}
 		return 0
 	})
-	bestFormat := filtered[0]
-	return bestFormat
+	return filtered
+}
+
+// EstimatedSize returns the known file size, or bitrate*duration/8
+// when the size is unknown, or 0 if neither is available.
+// note: some sources (e.g. X) report peak bitrates, so this can
+// overestimate the real size considerably.
+func (f *MediaFormat) EstimatedSize() int64 {
+	if f.FileSize > 0 {
+		return f.FileSize
+	}
+	if f.Bitrate > 0 && f.Duration > 0 {
+		return f.Bitrate * int64(f.Duration) / 8
+	}
+	return 0
 }
 
 func (mi *MediaItem) GetDefaultAudioFormat() *MediaFormat {
